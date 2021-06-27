@@ -13,6 +13,8 @@ import numpy as np
 from CenterOfMass import CenterOfMass
 from CenterOfPressure import CenterOfPressure
 
+from scipy import optimize
+
 class c_SystemDynamics:
     '''
     Constraint regarding initial final COM position
@@ -65,9 +67,12 @@ class c_SystemDynamics:
         '''
         return gradient of dynamic equation
         '''
-        d = self.com.gradient(t_k, dim, k, der=2)
-        d -= (self.g/self.h)*(  self.com.gradient(t_k, dim, k, der=0)
-                              - self.cop.gradient(t_k, dim, k))
+        eps = np.sqrt(np.finfo(float).eps)
+        d = optimize.approx_fprime(w, self.dynamic_equation, eps, t_k, dim, k)
+        
+        #d = self.com.grad_eval_spline(t_k, dim, k, der=2)
+        #d -= (self.g/self.h)*(  self.com.grad_eval_spline(t_k, dim, k, der=0)
+        #                      - self.cop.grad_get_u(w, t_k, dim, k))
         return d
     
     

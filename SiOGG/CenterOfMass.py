@@ -84,10 +84,30 @@ class CenterOfMass:
             raise ValueError(f"wrong derivative! + {dim}")    
         return val
     
-    
-    def gradient(self, t_k, dim, k, der=0):
+    def grad_get_c(self, t, dim, der=0):
         '''
-        return gradient of spline under the given parameters
+        return gradient of get_c() under the given parameters
+        
+        making use of the linear relationship between the optimization
+        variable and the spline, each element of the gradient can be calculated
+        by setting the corresponding optvar element to one and all others to
+        zero and evaluationg the spline
+        
+        k is from 0 to n-1
+        '''
+        # only calculate gradiend wrt w_c as all other elements are zero
+        grad = np.zeros(self.n_optvar)
+        w_iter = np.zeros(self.n_optvar)
+        for i in range(self.n_w_c):
+            w_iter[i] = 1
+            grad[i] = self.get_c(w_iter, t, dim, der)
+            w_iter[i] = 0
+        return grad
+        
+    
+    def grad_eval_spline(self, t_k, dim, k, der=0):
+        '''
+        return gradient of eval_spline() under the given parameters
         
         making use of the linear relationship between the optimization
         variable and the spline, each element of the gradient can be calculated
@@ -104,7 +124,6 @@ class CenterOfMass:
             grad[i] = self.eval_spline(w_iter, t_k, dim, k, der)
             w_iter[i] = 0
         return grad
-        
 
                     
             

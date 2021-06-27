@@ -24,8 +24,9 @@ class CenterOfPressure:
         self.n_s = problem.n_s      # number of steps
         self.n_f = problem.n_f      # number of feet
         self.n_u = problem.n_u      # number of lambda (vertex weights) PER STEP
-        self.n_w_u = problem.n_w_u  # number of total lambda values
         self.n_w_c = problem.n_w_c  # number of com optimization variables
+        self.n_w_p = problem.n_w_p  # number of total leg position variables
+        self.n_w_u = problem.n_w_u  # number of total lambda values
         self.n_optvar = problem.n_optvar
         
         self.T_c = problem.T_c      # time spend in each COM spline
@@ -86,21 +87,34 @@ class CenterOfPressure:
         return val
     
 
-    def gradient(self, t_k, dim, k):
+    def grad_get_u(self, w, t_k, dim, k):
         '''
         return gradient of COP under the given parameters
         
-        making use of the linear relationship between the optimization
-        variable and the spline, each element of the gradient can be calculated
-        by setting the corresponding optvar element to one and all others to
-        zero and evaluationg the spline
+        get_u depends on leg positions and vertex weights, which are both
+        present in optimization variable. Thus, instead of setting only the
+        current variable to one and all remaining to zero, we apply this
+        technique blockwise. E.g. calculating the gradient wrt to w_u, we set
+        the current element in w_u to 1, the remaining elements in w_u to
+        0 and let all other variables stay the same.
         
         k is from 0 to n-1
         '''
         # only calculate gradiend wrt w_c as all other elements are zero
         grad = np.zeros(self.n_optvar)
-        w_iter = np.zeros(self.n_optvar)
-        for i in range(self.n_w_c):
+        
+        # part 1: gradient wrt w_p
+        w_iter = np.copy(w)
+        w_iter[self.n_w_c:self.n_w_u] = 0
+        for i in range(self.n_w_c, self.n_w_c+self.n_w_p):
+            w_iter[i] = 1
+            grad[i] = self.get_u(w_iter, t_k, dim, k)
+            w_iter[i] = 0
+            
+        # part 2: gradient wrt w_u
+        w_iter = np.copy(w)
+        w_iter[self.n_w_u:] = 0
+        for i in range(self.n_w_c+self.n_w_p, self.n_optvar):
             w_iter[i] = 1
             grad[i] = self.get_u(w_iter, t_k, dim, k)
             w_iter[i] = 0

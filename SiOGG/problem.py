@@ -10,9 +10,6 @@ from c_COMSplineContinuity import c_COMSplineContinuity
 from c_COMIniFiPos import c_COMIniFiPos
 from c_SystemDynamics import c_SystemDynamics
 
-#from CenterOfMass import CenterOfMass
-#from CenterOfPressure import CenterOfPressure
-
 ### default parameters ######################################################
 
 # geometry
@@ -25,8 +22,6 @@ p_nom = np.array([[ 20, -10],
 
 # contact sequence
 c = np.array([[1, 1, 1, 1],
-              [1, 1, 1, 0],
-              [1, 1, 1, 0],
               [1, 1, 1, 1],
               [1, 1, 1, 1]])
 
@@ -43,8 +38,8 @@ support_ratio = 0.8
 # initial conditions
 x_com_0 = np.array([[10, 100,],       # [dimension][derivative]
                     [-10, 0]])
-x_com_T = np.array([[10, 0,],       # [dimension][derivative]
-                    [-10, 0]])
+x_com_T = np.array([[-10, 0,],       # [dimension][derivative]
+                    [10, 0]])
 
 p_legs = np.array([[[1, 0],
                  [1, 9]],
@@ -169,6 +164,7 @@ class Problem:
         #
         print("[problem.py] constructing problem")
         x0 = np.random.rand(self.n_optvar)
+        #x0 = np.zeros(self.n_optvar)
     
         lb = np.ones(self.n_optvar)*-99
         ub = np.ones(self.n_optvar)*99
@@ -192,7 +188,7 @@ class Problem:
         #nlp.addOption('derivative_test', 'second-order')
         #nlp.add_option('mu_strategy', 'adaptive')
         nlp.add_option('tol', 1e-5)
-        nlp.add_option('max_iter', 200)#1e-5)
+        nlp.add_option('max_iter', 8)
     
         #
         # Scale the problem (Just for demonstration purposes)
@@ -223,7 +219,7 @@ if __name__ == '__main__':
     from CenterOfMass import CenterOfMass
     
     plt.figure(figsize=(10, 10))
-    n_hlines = int(problem.T/problem.T_c)
+    n_hlines = int(problem.T/(problem.T_c*problem.n))
     for i in range(n_hlines):
         plt.axvline(i*problem.T_c, linestyle="--", color="k")
         

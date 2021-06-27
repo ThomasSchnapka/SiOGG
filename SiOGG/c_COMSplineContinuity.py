@@ -55,20 +55,20 @@ class c_COMSplineContinuity:
         jac = np.zeros((4*self.n_junct, self.n_optvar))
         for i in range(self.n_junct):
             jac[0*self.n_junct+i] = (
-                       self.com.gradient(self.T_c, "x",     i, 0)
-                      -self.com.gradient(       0, "x", (i+1), 0)
+                       self.com.grad_eval_spline(self.T_c, "x",     i, 0)
+                      -self.com.grad_eval_spline(       0, "x", (i+1), 0)
                       )
             jac[1*self.n_junct+i] = (
-                       self.com.gradient(self.T_c, "y",     i, 0)
-                      -self.com.gradient(       0, "y", (i+1), 0)
+                       self.com.grad_eval_spline(self.T_c, "y",     i, 0)
+                      -self.com.grad_eval_spline(       0, "y", (i+1), 0)
                       )
             jac[2*self.n_junct+i] = (
-                       self.com.gradient(self.T_c, "x",     i, 1)
-                      -self.com.gradient(       0, "x", (i+1), 1)
+                       self.com.grad_eval_spline(self.T_c, "x",     i, 1)
+                      -self.com.grad_eval_spline(       0, "x", (i+1), 1)
                       )
             jac[3*self.n_junct+i] = (
-                       self.com.gradient(self.T_c, "y",     i, 1)
-                      -self.com.gradient(       0, "y", (i+1), 1)
+                       self.com.grad_eval_spline(self.T_c, "y",     i, 1)
+                      -self.com.grad_eval_spline(       0, "y", (i+1), 1)
                       )
         return jac
     

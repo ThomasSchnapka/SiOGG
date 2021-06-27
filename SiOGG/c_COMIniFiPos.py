@@ -46,15 +46,14 @@ class c_COMIniFiPos:
         #jac[0,0] = 1
         #
         jac = np.zeros((8, self.n_optvar))
-        
-        jac[0] = self.com.gradient(       0, "x",                 0, 0)
-        jac[1] = self.com.gradient(       0, "x",                 0, 1)
-        jac[2] = self.com.gradient(       0, "y",                 0, 0)
-        jac[3] = self.com.gradient(       0, "y",                 0, 1)
-        jac[4] = self.com.gradient(self.T_c, "x", self.n*self.n_s-1, 0)
-        jac[5] = self.com.gradient(self.T_c, "x", self.n*self.n_s-1, 1)
-        jac[6] = self.com.gradient(self.T_c, "y", self.n*self.n_s-1, 0)
-        jac[7] = self.com.gradient(self.T_c, "y", self.n*self.n_s-1, 1)
+        jac[0] = self.com.grad_get_c(     0, "x", 0)
+        jac[1] = self.com.grad_get_c(     0, "x", 1)
+        jac[2] = self.com.grad_get_c(     0, "y", 0)
+        jac[3] = self.com.grad_get_c(     0, "y", 1)
+        jac[4] = self.com.grad_get_c(self.T, "x", 0)
+        jac[5] = self.com.grad_get_c(self.T, "x", 1)
+        jac[6] = self.com.grad_get_c(self.T, "y", 0)
+        jac[7] = self.com.grad_get_c(self.T, "y", 1)
         return jac
     
     def amount(self):
