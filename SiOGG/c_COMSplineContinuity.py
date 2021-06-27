@@ -7,7 +7,7 @@ equal
 
 import numpy as np
 
-from SplineCOM import SplineCOM
+from CenterOfMass import CenterOfMass
 
 class c_COMSplineContinuity:
     '''
@@ -17,13 +17,12 @@ class c_COMSplineContinuity:
         self.n_w_c = problem.n_w_c
         self.n_w_p = problem.n_w_p
         self.n_w_u = problem.n_w_u
-        self.n = problem.n
         self.T_c = problem.T_c
         self.n_junct = problem.n-1
         self.n_optvar = problem.n_optvar
         
-        self.splineCOM = SplineCOM(problem)
-        pass
+        self.com = CenterOfMass(problem)
+        
     
     def constraint(self, w):
         '''return distance between knots in order 
@@ -33,20 +32,20 @@ class c_COMSplineContinuity:
         d = np.zeros(4*self.n_junct)
         for i in range(self.n_junct):
             d[0*self.n_junct+i] = (
-                       self.splineCOM.eval_spline(w, self.T_c, "x",     i, 0)
-                      -self.splineCOM.eval_spline(w,        0, "x", (i+1), 0)
+                       self.com.eval_spline(w, self.T_c, "x",     i, 0)
+                      -self.com.eval_spline(w,        0, "x", (i+1), 0)
                       )
             d[1*self.n_junct+i] = (
-                       self.splineCOM.eval_spline(w, self.T_c, "y",     i, 0)
-                      -self.splineCOM.eval_spline(w,        0, "y", (i+1), 0)
+                       self.com.eval_spline(w, self.T_c, "y",     i, 0)
+                      -self.com.eval_spline(w,        0, "y", (i+1), 0)
                       )
             d[2*self.n_junct+i] = (
-                       self.splineCOM.eval_spline(w, self.T_c, "x",     i, 1)
-                      -self.splineCOM.eval_spline(w,        0, "x", (i+1), 1)
+                       self.com.eval_spline(w, self.T_c, "x",     i, 1)
+                      -self.com.eval_spline(w,        0, "x", (i+1), 1)
                       )
             d[3*self.n_junct+i] = (
-                       self.splineCOM.eval_spline(w, self.T_c, "y",     i, 1)
-                      -self.splineCOM.eval_spline(w,        0, "y", (i+1), 1)
+                       self.com.eval_spline(w, self.T_c, "y",     i, 1)
+                      -self.com.eval_spline(w,        0, "y", (i+1), 1)
                       )
         return d
     
@@ -56,20 +55,20 @@ class c_COMSplineContinuity:
         jac = np.zeros((4*self.n_junct, self.n_optvar))
         for i in range(self.n_junct):
             jac[0*self.n_junct+i] = (
-                       self.splineCOM.gradient(self.T_c, "x",     i, 0)
-                      -self.splineCOM.gradient(       0, "x", (i+1), 0)
+                       self.com.gradient(self.T_c, "x",     i, 0)
+                      -self.com.gradient(       0, "x", (i+1), 0)
                       )
             jac[1*self.n_junct+i] = (
-                       self.splineCOM.gradient(self.T_c, "y",     i, 0)
-                      -self.splineCOM.gradient(       0, "y", (i+1), 0)
+                       self.com.gradient(self.T_c, "y",     i, 0)
+                      -self.com.gradient(       0, "y", (i+1), 0)
                       )
             jac[2*self.n_junct+i] = (
-                       self.splineCOM.gradient(self.T_c, "x",     i, 1)
-                      -self.splineCOM.gradient(       0, "x", (i+1), 1)
+                       self.com.gradient(self.T_c, "x",     i, 1)
+                      -self.com.gradient(       0, "x", (i+1), 1)
                       )
             jac[3*self.n_junct+i] = (
-                       self.splineCOM.gradient(self.T_c, "y",     i, 1)
-                      -self.splineCOM.gradient(       0, "y", (i+1), 1)
+                       self.com.gradient(self.T_c, "y",     i, 1)
+                      -self.com.gradient(       0, "y", (i+1), 1)
                       )
         return jac
     

@@ -8,13 +8,16 @@ from scipy.linalg import block_diag
 from CostFunction import CostFunction
 from c_COMSplineContinuity import c_COMSplineContinuity
 from c_COMIniFiPos import c_COMIniFiPos
+from c_SystemDynamics import c_SystemDynamics
 
-from SplineCOM import SplineCOM
+#from CenterOfMass import CenterOfMass
+#from CenterOfPressure import CenterOfPressure
 
 ### default parameters ######################################################
 
 # geometry
 r = 0.02    # half of edge length of RoM
+h = 20      # hight of COM
 p_nom = np.array([[ 20, -10],
                   [ 20,  10],
                   [-20, -10],
@@ -31,23 +34,11 @@ c = np.array([[1, 1, 1, 1],
 # paramters
 n_s = c.shape[0]    # number of steps
 n_f = 4     # number of feet
-n_u = 10    # number of lambda (vertex weights) PER STEP
-n = 4   # number of quartic polynomials describing the COM motion
+n_u = 9    # number of lambda (vertex weights) PER STEP
+n = 3   # number of quartic polynomials describing the COM motion PER STEP
 
 T_s = 0.5   # time per step (T must be multiple of T_s)
 support_ratio = 0.8
-
-T = n_s*T_s       # total horizon time
-T_u = T/n_u  # time interval for lambda (vertex weights)
-T_c = T/n  # time spend in each COM spline
-
-
-n_w_c = 2*5*n
-n_w_p = 2*n_s*n_f
-n_w_u = n_f*n_u*n_s
-
-#n_optvar = n_w_c + n_w_p + n_w_u         # length of optimization vector
-#n_constr = n_s + n_w_p + n               # number of constraints (PROVISORISCH)
 
 # initial conditions
 x_com_0 = np.array([[10, 100,],       # [dimension][derivative]
@@ -87,11 +78,13 @@ class Problem:
                  x_com_T=x_com_T,
                  p_legs=p_legs,
                  r=r,
+                 h=h,
                  p_nom=p_nom,
                  ):
         
         # geometry
         self.r = r
+        self.h = h
         self.p_nom = p_nom
         
         # contact sequence
@@ -101,7 +94,7 @@ class Problem:
         self.n_s = c.shape[0]    # number of steps
         self.n_f = n_f     # number of feet
         self.n_u = n_u    # number of lambda (vertex weights) PER STEP
-        self.n = 4    # number of quartic polynomials describing the COM motion
+        self.n = n    # number of quartic polynomials describing the COM motion PER STEP
         
         self.T_s = T_s  # time per step (T must be multiple of T_s)
         self.support_ratio = support_ratio
@@ -110,10 +103,10 @@ class Problem:
         self.T_u = self.T/self.n_u       # time interval for lambda (vertex weights)
         self.T_c = self.T/self.n  # time spend in each COM spline
         
-        self.n_w_c = 2*5*self.n
+        self.n_w_c = 2*5*self.n*self.n_s
         self.n_w_p = 2*self.n_s*n_f
         self.n_w_u = n_f*n_u*n_s
-        self.n_optvar = n_w_c + n_w_p + n_w_u   # length of optimization vector
+        self.n_optvar = self.n_w_c + self.n_w_p +  self.n_w_u   # length of optimization vector
         
         
         # initial conditions
@@ -128,8 +121,10 @@ class Problem:
         # constraints
         self.comSplineContinuity = c_COMSplineContinuity(self)
         self.comIniFiPos = c_COMIniFiPos(self)
+        self.systemDynamics = c_SystemDynamics(self)
         self.n_constr = self.comSplineContinuity.amount()  # number of constraints
         self.n_constr += self.comIniFiPos.amount() 
+        self.n_constr += self.systemDynamics.amount() 
         
         
         
@@ -149,7 +144,8 @@ class Problem:
         '''The callback for calculating the constraints'''
         #cons = np.zeros((self.n_constr, self.n_optvar))
         cons = np.hstack((self.comSplineContinuity.constraint(w),
-                          self.comIniFiPos.constraint(w)
+                          self.comIniFiPos.constraint(w),
+                          self.systemDynamics.constraint(w)
                           ))
         print("cost", np.around(self.costFunction.cost(w), 2),
               "cons", np.around(sum(cons), 2))
@@ -159,8 +155,9 @@ class Problem:
     def jacobian(self, w):
         '''The callback for calculating the Jacobian'''
         jac = np.vstack((self.comSplineContinuity.jacobian(w),
-                         self.comIniFiPos.jacobian(w))
-                         )
+                         self.comIniFiPos.jacobian(w),
+                         self.systemDynamics.jacobian(w)
+                         ))
         jac = np.ravel(jac)
         return jac
     
@@ -194,8 +191,8 @@ class Problem:
         #
         #nlp.addOption('derivative_test', 'second-order')
         #nlp.add_option('mu_strategy', 'adaptive')
-        nlp.add_option('tol', 10.0)#1e-5)
-        nlp.add_option('max_iter', 50)#1e-5)
+        nlp.add_option('tol', 1e-5)
+        nlp.add_option('max_iter', 200)#1e-5)
     
         #
         # Scale the problem (Just for demonstration purposes)
@@ -223,6 +220,7 @@ if __name__ == '__main__':
     
     #'''
     import matplotlib.pyplot as plt
+    from CenterOfMass import CenterOfMass
     
     plt.figure(figsize=(10, 10))
     n_hlines = int(problem.T/problem.T_c)
@@ -230,13 +228,13 @@ if __name__ == '__main__':
         plt.axvline(i*problem.T_c, linestyle="--", color="k")
         
     n_eval = 50
-    splineCOM = SplineCOM(problem)
+    com = CenterOfMass(problem)
     tsteps = np.linspace(0, problem.T, n_eval)
     x = np.zeros(n_eval)
     y = np.zeros(n_eval)
     for i in range(n_eval):
-        x[i] = splineCOM.get_c(w, tsteps[i], "x")
-        y[i] = splineCOM.get_c(w, tsteps[i], "y")
+        x[i] = com.get_c(w, tsteps[i], "x")
+        y[i] = com.get_c(w, tsteps[i], "y")
     plt.plot(tsteps, x, "o-")
     plt.plot(tsteps, y, "o-")
     plt.show()
