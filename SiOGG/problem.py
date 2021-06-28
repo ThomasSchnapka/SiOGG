@@ -14,7 +14,7 @@ from c_SystemDynamics import c_SystemDynamics
 
 # geometry
 r = 0.02    # half of edge length of RoM
-h = 20      # hight of COM
+h = 0.50      # hight of COM
 p_nom = np.array([[ 20, -10],
                   [ 20,  10],
                   [-20, -10],
@@ -22,7 +22,6 @@ p_nom = np.array([[ 20, -10],
 
 # contact sequence
 c = np.array([[1, 1, 1, 1],
-              [1, 1, 1, 1],
               [1, 1, 1, 1]])
 
 
@@ -32,14 +31,13 @@ n_f = 4     # number of feet
 n_u = 9    # number of lambda (vertex weights) PER STEP
 n = 3   # number of quartic polynomials describing the COM motion PER STEP
 
-T_s = 0.5   # time per step (T must be multiple of T_s)
-support_ratio = 0.8
+T_s = 0.8   # time per step
 
 # initial conditions
-x_com_0 = np.array([[10, 100,],       # [dimension][derivative]
-                    [-10, 0]])
-x_com_T = np.array([[-10, 0,],       # [dimension][derivative]
-                    [10, 0]])
+x_com_0 = np.array([[0.5, 0.0],       # [dimension][derivative]
+                    [0.0, 0.0]])
+x_com_T = np.array([[0.0, 0.0,],       # [dimension][derivative]
+                    [0.0, 0.0]])
 
 p_legs = np.array([[[1, 0],
                  [1, 9]],
@@ -68,7 +66,6 @@ class Problem:
                  n_u=n_u,
                  n=n,
                  T_s=T_s,
-                 support_ratio=support_ratio,
                  x_com_0=x_com_0,
                  x_com_T=x_com_T,
                  p_legs=p_legs,
@@ -92,14 +89,13 @@ class Problem:
         self.n = n    # number of quartic polynomials describing the COM motion PER STEP
         
         self.T_s = T_s  # time per step (T must be multiple of T_s)
-        self.support_ratio = support_ratio
         
         self.T = self.n_s*self.T_s       # total horizon time
-        self.T_u = self.T/self.n_u       # time interval for lambda (vertex weights)
-        self.T_c = self.T/self.n  # time spend in each COM spline
+        self.T_u = self.T_s/self.n_u     # time interval for lambda (vertex weights)
+        self.T_c = self.T_s/self.n       # time spend in each COM spline
         
-        self.n_w_c = 2*5*self.n*self.n_s
-        self.n_w_p = 2*self.n_s*n_f
+        self.n_w_c = 2*5*n*self.n_s
+        self.n_w_p = 2*n_f*self.n_s
         self.n_w_u = n_f*n_u*n_s
         self.n_optvar = self.n_w_c + self.n_w_p +  self.n_w_u   # length of optimization vector
         
@@ -142,8 +138,9 @@ class Problem:
                           self.comIniFiPos.constraint(w),
                           self.systemDynamics.constraint(w)
                           ))
-        print("cost", np.around(self.costFunction.cost(w), 2),
-              "cons", np.around(sum(cons), 2))
+        #cons = self.systemDynamics.constraint(w)
+        print("cost", np.around(self.costFunction.cost(w), 3),
+              "cons", np.around(sum(cons), 3))
         return cons
 
 
@@ -152,7 +149,8 @@ class Problem:
         jac = np.vstack((self.comSplineContinuity.jacobian(w),
                          self.comIniFiPos.jacobian(w),
                          self.systemDynamics.jacobian(w)
-                         ))
+                          ))
+        #ac = self.systemDynamics.jacobian(w)
         jac = np.ravel(jac)
         return jac
     
@@ -163,11 +161,11 @@ class Problem:
         # Define the problem
         #
         print("[problem.py] constructing problem")
-        x0 = np.random.rand(self.n_optvar)
-        #x0 = np.zeros(self.n_optvar)
+        w0 = np.random.rand(self.n_optvar)
+        #w0 = np.zeros(self.n_optvar)
     
-        lb = np.ones(self.n_optvar)*-99
-        ub = np.ones(self.n_optvar)*99
+        lb = np.ones(self.n_optvar)*-9999
+        ub = np.ones(self.n_optvar)*9999
     
         cl = np.zeros(self.n_constr)
         cu = np.zeros(self.n_constr)
@@ -188,7 +186,7 @@ class Problem:
         #nlp.addOption('derivative_test', 'second-order')
         #nlp.add_option('mu_strategy', 'adaptive')
         nlp.add_option('tol', 1e-5)
-        nlp.add_option('max_iter', 8)
+        nlp.add_option('max_iter', 20)
     
         #
         # Scale the problem (Just for demonstration purposes)
@@ -203,7 +201,7 @@ class Problem:
         # Solve the problem
         #
         print("[problem.py] solving problem")
-        w, info = nlp.solve(x0)
+        w, info = nlp.solve(w0)
         print("[problem.py] found optimal solution!")
         return w
         
@@ -217,23 +215,61 @@ if __name__ == '__main__':
     #'''
     import matplotlib.pyplot as plt
     from CenterOfMass import CenterOfMass
+    from CenterOfPressure import CenterOfPressure
+    from OptvarFootPos import OptvarFootPos
+    from OptvarVertexWeight import OptvarVertexWeight
     
     plt.figure(figsize=(10, 10))
-    n_hlines = int(problem.T/(problem.T_c*problem.n))
+    n_hlines = int(problem.T/problem.T_c)
     for i in range(n_hlines):
         plt.axvline(i*problem.T_c, linestyle="--", color="k")
-        
+    
+    # plot COM
     n_eval = 50
     com = CenterOfMass(problem)
     tsteps = np.linspace(0, problem.T, n_eval)
-    x = np.zeros(n_eval)
-    y = np.zeros(n_eval)
+    com_x = np.zeros(n_eval)
+    com_y = np.zeros(n_eval)
     for i in range(n_eval):
-        x[i] = com.get_c(w, tsteps[i], "x")
-        y[i] = com.get_c(w, tsteps[i], "y")
-    plt.plot(tsteps, x, "o-")
-    plt.plot(tsteps, y, "o-")
+        com_x[i] = com.get_c(w, tsteps[i], "x")
+        com_y[i] = com.get_c(w, tsteps[i], "y")
+    plt.plot(tsteps, com_x, "o-", label="com_x")
+    plt.plot(tsteps, com_y, "o-", label="com_y")
+    
+    # plot COP
+    cop = CenterOfPressure(problem)
+    n_eval = problem.n*problem.n_s*3
+    tsteps = np.linspace(0, problem.T, n_eval)
+    cop_x = np.zeros(n_eval)
+    cop_y = np.zeros(n_eval)
+    for i in range(problem.n*problem.n_s):
+        cop_x[3*i+0] = cop.get_u(w,             0, "x", i)
+        cop_x[3*i+1] = cop.get_u(w, problem.T_c/2, "x", i)
+        cop_x[3*i+2] = cop.get_u(w,   problem.T_c, "x", i)
+        cop_y[3*i+0] = cop.get_u(w,             0, "y", i)
+        cop_y[3*i+1] = cop.get_u(w, problem.T_c/2, "y", i)
+        cop_y[3*i+2] = cop.get_u(w,   problem.T_c, "y", i)
+    plt.plot(tsteps, cop_x, "v-", label="cop_x")
+    plt.plot(tsteps, cop_y, "v-", label="cop_y")
+    
+    plt.legend()
     plt.show()
+    
+    # plot lambda values
+    plt.figure(figsize=(10, 5))
+    ovw = OptvarVertexWeight(w, problem)
+    weights = np.zeros((problem.n_u*problem.n_s, problem.n_f))
+    for i in range(problem.n_u*problem.n_s):
+        weights[i] = ovw.get_lambda_u(i)
+        
+    for i in range(problem.n_f):
+        plt.plot(weights[:,i], label=str(i))
+    
+    plt.legend()
+    plt.show()
+    
+    # plot foot position
+    
     #'''
     #splineCOM = SplineCOM(problem)
     #print(splineCOM.get_dcx_dw(w, problem.T_c, 2))

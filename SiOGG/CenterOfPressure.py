@@ -14,8 +14,8 @@ construction of optimization variable w_p:
 """
 
 import numpy as np
-from OptvarControl import OptvarControl
-from OptvarLegPos import OptvarLegPos
+from OptvarVertexWeight import OptvarVertexWeight
+from OptvarFootPos import OptvarFootPos
 
 class CenterOfPressure:
     def __init__(self, problem):
@@ -72,16 +72,16 @@ class CenterOfPressure:
         '''
         assert(dim=="x" or dim=="y")
         
-        w_u = OptvarControl(w, self.problem)
-        w_p = OptvarLegPos(w, self.problem)
+        w_u = OptvarVertexWeight(w, self.problem)
+        w_p = OptvarFootPos(w, self.problem)
         
         # determine which u segment is corresponding to t_k
-        k_s = int(k/self.n)                         # number of step
+        k_s = int(0.999*k/self.n)                         # number of step
         k_u = self.n_u*k_s + int(self.n_u*0.999*t_k/self.T_c)  # number of lambda vector
 
-        
-        lambda_u = w_u.get_lambda_u(k_u)
         feet_pos = w_p.get_feet_pos(k_s, dim)
+        lambda_u = w_u.get_lambda_u(k_u)
+        
         val = lambda_u@feet_pos
         
         return val

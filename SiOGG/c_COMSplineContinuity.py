@@ -18,7 +18,7 @@ class c_COMSplineContinuity:
         self.n_w_p = problem.n_w_p
         self.n_w_u = problem.n_w_u
         self.T_c = problem.T_c
-        self.n_junct = problem.n-1
+        self.n_junct = problem.n*problem.n_s-1
         self.n_optvar = problem.n_optvar
         
         self.com = CenterOfMass(problem)
