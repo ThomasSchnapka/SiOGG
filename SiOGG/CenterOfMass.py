@@ -25,15 +25,25 @@ class CenterOfMass:
 
 
     def find_k(self, t):
-        '''return the spline number responsible for time t'''
+        '''
+        return the number of the spline segment in action at time t
+        
+        rounding is neccessary to prevent decimal errors caused by the 
+        base two representation
+        '''
         k = None
+        # testing a new approach
+        '''
         for i in range(self.n*self.n_s):
-            #if t < self.T_c*(i+1):
-            if (t >= self.T_c*i) and (t <= self.T_c*(i+1)):
+            if (    (round(t, 3) >= round(self.T_c*i,     3)) 
+                and (round(t, 3) <= round(self.T_c*(i+1), 3))):
                 k = i
                 break
         if k == None:
             raise ValueError(f"wrong k for t: {t}")
+        '''
+        k = int(0.999*t/self.T_c)
+        assert(k<=self.n*self.n_s)
         return k
     
     

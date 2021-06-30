@@ -44,12 +44,12 @@ class c_SystemDynamics:
         '''
         d = np.zeros(6*self.n*self.n_s)
         for i_c in range(self.n*self.n_s):
-            d[3*i_c+0] = self.dynamic_equation(w,          0, "x", i_c)
-            d[3*i_c+1] = self.dynamic_equation(w, self.T_c/2, "x", i_c)
-            d[3*i_c+2] = self.dynamic_equation(w,   self.T_c, "x", i_c)
-            d[3*i_c+3] = self.dynamic_equation(w,          0, "y", i_c)
-            d[3*i_c+4] = self.dynamic_equation(w, self.T_c/2, "y", i_c)
-            d[3*i_c+5] = self.dynamic_equation(w,   self.T_c, "y", i_c)
+            d[6*i_c+0] = self.dynamic_equation(w,          0, "x", i_c)
+            d[6*i_c+1] = self.dynamic_equation(w, self.T_c/2, "x", i_c)
+            d[6*i_c+2] = self.dynamic_equation(w,   self.T_c, "x", i_c)
+            d[6*i_c+3] = self.dynamic_equation(w,          0, "y", i_c)
+            d[6*i_c+4] = self.dynamic_equation(w, self.T_c/2, "y", i_c)
+            d[6*i_c+5] = self.dynamic_equation(w,   self.T_c, "y", i_c)
         return d
     
     
@@ -67,14 +67,14 @@ class c_SystemDynamics:
         '''
         return gradient of dynamic equation
         '''
-        #eps = np.sqrt(np.finfo(float).eps)
-        #d = optimize.approx_fprime(w, self.dynamic_equation, eps, t_k, dim, k)
+        eps = np.sqrt(np.finfo(float).eps)
+        d = optimize.approx_fprime(w, self.dynamic_equation, eps, t_k, dim, k)
         
-        d1 = self.com.grad_eval_spline(t_k, dim, k, der=2)
-        d1 -= (self.g/self.h)*(  self.com.grad_eval_spline(t_k, dim, k, der=0)
-                              - self.cop.grad_get_u(w, t_k, dim, k))
+        #d1 = self.com.grad_eval_spline(t_k, dim, k, der=2)
+        #d1 -= (self.g/self.h)*(  self.com.grad_eval_spline(t_k, dim, k, der=0)
+        #                       - self.cop.grad_get_u(w, t_k, dim, k))
         #print(d-d1)
-        return d1
+        return d
     
     
     def jacobian(self, w):
@@ -82,12 +82,12 @@ class c_SystemDynamics:
         jac = np.zeros((6*self.n*self.n_s, self.n_optvar))
         
         for i_c in range(self.n*self.n_s):
-            jac[3*i_c+0] = self.grad_dynamic_equation(w,          0, "x", i_c)
-            jac[3*i_c+1] = self.grad_dynamic_equation(w, self.T_c/2, "x", i_c)
-            jac[3*i_c+2] = self.grad_dynamic_equation(w,   self.T_c, "x", i_c)
-            jac[3*i_c+3] = self.grad_dynamic_equation(w,          0, "y", i_c)
-            jac[3*i_c+4] = self.grad_dynamic_equation(w, self.T_c/2, "y", i_c)
-            jac[3*i_c+5] = self.grad_dynamic_equation(w,   self.T_c, "y", i_c)
+            jac[6*i_c+0] = self.grad_dynamic_equation(w,          0, "x", i_c)
+            jac[6*i_c+1] = self.grad_dynamic_equation(w, self.T_c/2, "x", i_c)
+            jac[6*i_c+2] = self.grad_dynamic_equation(w,   self.T_c, "x", i_c)
+            jac[6*i_c+3] = self.grad_dynamic_equation(w,          0, "y", i_c)
+            jac[6*i_c+4] = self.grad_dynamic_equation(w, self.T_c/2, "y", i_c)
+            jac[6*i_c+5] = self.grad_dynamic_equation(w,   self.T_c, "y", i_c)
         return jac
     
     

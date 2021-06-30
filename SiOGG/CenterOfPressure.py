@@ -76,13 +76,15 @@ class CenterOfPressure:
         w_p = OptvarFootPos(w, self.problem)
         
         # determine which u segment is corresponding to t_k
-        k_s = int(0.999*k/self.n)                         # number of step
-        k_u = self.n_u*k_s + int(self.n_u*0.999*t_k/self.T_c)  # number of lambda vector
+        #k_s = int(0.999*k/self.n)                         # number of step
+        #k_u = self.n_u*k_s + int(self.n_u*0.999*t_k/self.T_c)  # number of lambda vector
+        k_s = int(k//self.n)                         # number of step
+        k_u = self.n_u*k_s + int((self.n_u**t_k)//self.T_c)  # number of lambda vector
 
         feet_pos = w_p.get_feet_pos(k_s, dim)
         lambda_u = w_u.get_lambda_u(k_u)
         
-        val = lambda_u@feet_pos
+        val = lambda_u@feet_pos 
         
         return val
     
