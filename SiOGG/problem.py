@@ -9,54 +9,41 @@ from CostFunction import CostFunction
 from c_COMSplineContinuity import c_COMSplineContinuity
 from c_COMIniFiPos import c_COMIniFiPos
 from c_SystemDynamics import c_SystemDynamics
+from c_RangeOfMotion import c_RangeOfMotion
 
 ### default parameters ######################################################
 
 # geometry
 r = 0.02    # half of edge length of RoM
 h = 0.50      # hight of COM
-p_nom = np.array([[ 20, -10],
-                  [ 20,  10],
-                  [-20, -10],
-                  [-20,  10]])
+p_nom = np.array([[0.2, -0.2],
+                  [  0,    0]])
 
 # contact sequence
-c = np.array([[1, 1, 1, 1],
-              [1, 1, 1, 0],
-              [1, 1, 1, 1],
-              [1, 1, 1, 1]])
+#c = np.array([[1, 1, 1, 1],
+#              [1, 1, 1, 0],
+#              [1, 1, 1, 1]])
 
 c = np.array([[1, 1],
               [1, 0],
-              [1, 1],
               [1, 1]])
 
 
 # paramters
 n_s = c.shape[0]    # number of steps
-n_f =2# 4     # number of feet
+n_f = 2# 4     # number of feet
 n_u = 9    # number of lambda (vertex weights) PER STEP
 n = 3   # number of quartic polynomials describing the COM motion PER STEP
 
 T_s = 1   # time per step
 
 # initial conditions
-x_com_0 = np.array([[0.2, 0.0],       # [dimension][derivative]
+x_com_0 = np.array([[0.1, 0.0],       # [dimension][derivative]
                     [0.0, 0.0]])
 x_com_T = np.array([[0.0, 0.0,],       # [dimension][derivative]
-                    [0.2, 0.0]])
+                    [0.0, 0.0]])
 
-p_legs = np.array([[[1, 0],
-                 [1, 9]],
-         
-                [[1, 2],
-                 [1, 2]],
-         
-                [[1, 2],
-                 [1, 2]],
-         
-                [[0, 0],
-                 [0, 0]]])
+
 
 
 ### problem class ###########################################################
@@ -75,10 +62,9 @@ class Problem:
                  T_s=T_s,
                  x_com_0=x_com_0,
                  x_com_T=x_com_T,
-                 p_legs=p_legs,
-                 r=r,
-                 h=h,
                  p_nom=p_nom,
+                 r=r,
+                 h=h
                  ):
         
         # geometry
@@ -113,7 +99,6 @@ class Problem:
         # initial conditions
         self.x_com_0 = x_com_0
         self.x_com_T = x_com_T
-        self.p_legs = p_legs
         
         
         # cost function
@@ -123,9 +108,16 @@ class Problem:
         self.comSplineContinuity = c_COMSplineContinuity(self)
         self.comIniFiPos = c_COMIniFiPos(self)
         self.systemDynamics = c_SystemDynamics(self)
-        self.n_constr = self.comSplineContinuity.amount()  # number of constraints
-        self.n_constr += self.comIniFiPos.amount() 
-        self.n_constr += self.systemDynamics.amount() 
+        self.rangeOfMotion = c_RangeOfMotion(self)
+        self.n_constr = 0
+        #self.n_constr = self.comSplineContinuity.amount()  # number of constraints
+        #self.n_constr += self.comIniFiPos.amount() 
+        #self.n_constr += self.systemDynamics.amount() 
+        self.n_constr += self.rangeOfMotion.amount() 
+        
+        # ensure correct dimension of input data
+        assert(self.p_nom.shape[0] == self.n_f)
+        assert(self.c.shape[1] == self.n_f)
         
         
         
@@ -144,10 +136,12 @@ class Problem:
     def constraints(self, w):
         '''The callback for calculating the constraints'''
         #cons = np.zeros((self.n_constr, self.n_optvar))
-        cons = np.hstack((self.comSplineContinuity.constraint(w),
-                          self.comIniFiPos.constraint(w),
-                          self.systemDynamics.constraint(w)
-                          ))
+        #cons = np.hstack((#self.comSplineContinuity.constraint(w),
+         #                 self.comIniFiPos.constraint(w),
+                          #self.systemDynamics.constraint(w),
+          #                self.rangeOfMotion.constraint(w)
+           #               ))
+        cons = self.rangeOfMotion.constraint(w)
         #cons = self.systemDynamics.constraint(w)
         print("cost", np.around(self.costFunction.cost(w), 3),
               "cons", np.around(np.sum(np.square(cons)), 3))
@@ -156,10 +150,12 @@ class Problem:
 
     def jacobian(self, w):
         '''The callback for calculating the Jacobian'''
-        jac = np.vstack((self.comSplineContinuity.jacobian(w),
-                         self.comIniFiPos.jacobian(w),
-                         self.systemDynamics.jacobian(w)
-                          ))
+        #jac = np.vstack((#self.comSplineContinuity.jacobian(w),
+        #                 self.comIniFiPos.jacobian(w),
+        #                 #self.systemDynamics.jacobian(w),
+        #                 self.rangeOfMotion.jacobian(w)
+        #                  ))
+        jac = self.rangeOfMotion.jacobian(w)
         #ac = self.systemDynamics.jacobian(w)
         jac = np.ravel(jac)
         return jac
@@ -235,6 +231,7 @@ if __name__ == '__main__':
     n_hlines = int(problem.T/problem.T_c)
     for i in range(n_hlines):
         plt.axvline(i*problem.T_c, linestyle="--", color="k")
+    plt.axhline(0, linestyle="--", color="k")
     
     # plot COM
     n_eval = 50
@@ -264,6 +261,21 @@ if __name__ == '__main__':
     plt.plot(tsteps, cop_x, "v-", label="cop_x")
     plt.plot(tsteps, cop_y, "v-", label="cop_y")
     
+    # plot foot location
+    ofp = OptvarFootPos(w, problem)
+    tsteps=np.linspace(0, problem.T, problem.n_s)
+    foot_pos_x = np.zeros((problem.n_s, problem.n_f))
+    foot_pos_y = np.zeros((problem.n_s, problem.n_f))
+    for i in range(problem.n_s):
+        foot_pos_x[i] = ofp.get_feet_pos(i, "x")
+        foot_pos_y[i] = ofp.get_feet_pos(i, "y")
+        
+    for i in range(problem.n_f):
+        plt.plot(tsteps, foot_pos_x[:,i], "o", markersize=10, label=(str(i)+ "_x"))
+        plt.plot(tsteps, foot_pos_y[:,i], "v", markersize=10, label=(str(i)+ "_y"))
+    
+    
+    
     plt.legend()
     plt.ylim((-0.5, 0.5))
     plt.show()
@@ -281,29 +293,6 @@ if __name__ == '__main__':
     
     plt.legend()
     plt.show()
-    
-    # plot foot position
-    plt.figure(figsize=(10, 5))
-    plt.title("foot position")
-    ofp = OptvarFootPos(w, problem)
-    tsteps=np.linspace(0, problem.T, problem.n_s)
-    foot_pos_x = np.zeros((problem.n_s, problem.n_f))
-    foot_pos_y = np.zeros((problem.n_s, problem.n_f))
-    for i in range(problem.n_s):
-        foot_pos_x[i] = ofp.get_feet_pos(i, "x")
-        foot_pos_y[i] = ofp.get_feet_pos(i, "y")
-        
-    for i in range(problem.n_f):
-        plt.plot(tsteps, foot_pos_x[:,i], "o", label=(str(i)+ "_x"))
-        plt.plot(tsteps, foot_pos_y[:,i], "+", label=(str(i)+ "_y"))
-    
-    plt.axhline(0, linestyle="--", color="k")
-    plt.grid()
-    plt.legend()
-    plt.show()
-    #
-    #splineCOM = SplineCOM(problem)
-    #print(splineCOM.get_dcx_dw(w, problem.T_c, 2))
     
     
     # for evaluating the jacobian

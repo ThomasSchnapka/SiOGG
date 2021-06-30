@@ -5,7 +5,13 @@ Ensure feasible kinematic motion by keeping the foot tips in range of motion
 
 Area where foot tip can be is approximated by a rectangle around the foot's nominal position:
 
-         -r < p_f[t] - c[t] - p_{nom} < r            (eq. 15)        
+            -r < p_f[t] - c[t] - p_{nom} < r            (eq. 15)      
+            
+   <=>          |p_f[t] - c[t] - p_{nom}| < r
+   <=>                           distance < r
+   
+   <=>      g(w, t) = /   distance - r      for distance > r
+                      \   0                 otherwise
 """
 
 import numpy as np
@@ -19,19 +25,18 @@ class c_RangeOfMotion:
     Constraint regarding range of motion of the foot tips
     '''
     def __init__(self, problem):
+        self.r = problem.r
         self.n = problem.n
+        self.n_c = problem.n_s
         self.n_s = problem.n_s
-        self.n_w_c = problem.n_w_c
-        self.n_w_p = problem.n_w_p
-        self.n_w_u = problem.n_w_u
-        self.x_com_0 = problem.x_com_0
-        self.x_com_T = problem.x_com_T
-        self.n_optvar = problem.n_optvar
-        self.T = problem.T
+        self.n_f = problem.n_f
         self.T_c = problem.T_c
-        self.h = problem.h
+        self.n_optvar = problem.n_optvar
+        self.problem = problem
         
         self.com = CenterOfMass(problem)
+        self.p_nom_x = problem.p_nom[0]
+        self.p_nom_y = problem.p_nom[1]
         
         
         
@@ -41,75 +46,64 @@ class c_RangeOfMotion:
         constraint is checked in middle of each COM splie
         TODO: ceck if this is a good idea
         '''
-        w_p = OptvarFootPos(w, self.problem)
+        d = np.zeros((2*self.n_s*self.n_c))
         
-        d = np.zeros((2*self.n_s*self.n_c, self.n_f))
-        
+        N = self.n_c*self.n_s
         for i_s in range(self.n_s):
             for i_c in range(self.n_c):
-                d[i_s*self.n_c + i_c :] = distance_feet_ROM(w_p, i_s, i_c, "x")
-                d[i_s*self.n_c + i_c + self.n_c*self.n_s, :] = distance_feet_ROM(w_p, i_s, i_c, "y")
+                idx = i_s*self.n_c + i_c
+                d[  idx] = self.distance_feet_ROM(w, i_s, i_c, "x", self.p_nom_x)
+                d[N+idx] = self.distance_feet_ROM(w, i_s, i_c, "y", self.p_nom_y)
                 
-        return np.ravel(d)
+        return d
     
     
-    def distance_feet_ROM(self, w_p, k_s, k_c, dim):
+    def distance_feet_ROM(self, w, k_s, k_c, dim, p_nom):
         '''
         return distance from foottips to rectangle around nominal foot position
         
-        
         Parameters
         ----------
-        w   : OptvarFootPos, access to current foot locations
-        k_s : int, number of step
-        k_c : int, number of com spline (relative to number of step)
-        dim : dimension to evaluate, either "x" oder "y"
+        w_p : OptvarFootPos, access to current foot locations
+        c   : com position in respective dimension
+        p_nom : (1 x n_f) np.ndarray, feet position in respective dimension
 
         Returns
         -------
-        vector with distances for all n_f feet
-
+        sum of distances
         '''
-        idx_dim = 0 if dim=="x" else 1
-        feet_pos = w_p.get_feet_pos(i_s, dim)
-        distance = (  feet_pos
-                    - com.eval_spline(w, self.T_c/2, dim, i_s*i_c)
-                    - self.p_nom[idx_dim])
-        distance[np.abs(distance) < r] = 0
-        return distance
+        w_p = OptvarFootPos(w, self.problem)
+        feet_pos = w_p.get_feet_pos(k_s, dim)
+        c = self.com.eval_spline(w, self.T_c/2, dim, k_c)
+        
+        distance = np.abs(feet_pos - c - p_nom)
+        d = distance - self.r
+        d[distance < self.r] = 0
+        return np.sum(d)
         
         
-    def grad_distance_feet_ROM(self, w_p, k_s, k_c, dim):
+    def grad_distance_feet_ROM(self, w, k_s, k_c, dim, p_nom):
         '''
         return gradient of dynamic equation
         '''
         w_p = OptvarFootPos(w, self.problem)
-        
         eps = np.sqrt(np.finfo(float).eps)
-        d = optimize.approx_fprime(w, self.distance_feet_ROM, eps, w_p, k_s, k_c, dim)
-        
-        return d
+        g = optimize.approx_fprime(w, self.distance_feet_ROM, eps, k_s, k_c, dim, p_nom)
+        return g
     
     
     def jacobian(self, w):
         '''return jacobian of constraints'''
-        jac = np.zeros((6*self.n*self.n_s, self.n_optvar))
+        jac = np.zeros((2*self.n_s*self.n_c, self.n_optvar))
         
-        #for i_c in range(self.n*self.n_s):
-            #jac[6*i_c+0] = self.grad_dynamic_equation(w,          0, "x", i_c)
-            #jac[6*i_c+1] = self.grad_dynamic_equation(w, self.T_c/2, "x", i_c)
-            #jac[6*i_c+2] = self.grad_dynamic_equation(w,   self.T_c, "x", i_c)
-            #jac[6*i_c+3] = self.grad_dynamic_equation(w,          0, "y", i_c)
-            #jac[6*i_c+4] = self.grad_dynamic_equation(w, self.T_c/2, "y", i_c)
-            #jac[6*i_c+5] = self.grad_dynamic_equation(w,   self.T_c, "y", i_c)
-            
-        # WEITER MIT GRADIENT
+        w_p = OptvarFootPos(w, self.problem)
+        N = self.n_c*self.n_s
         
         for i_s in range(self.n_s):
             for i_c in range(self.n_c):
-                d[i_s*self.n_c + i_c, :] = distance_feet_ROM(w_p, i_s, i_c, "x")
-                d[i_s*self.n_c + i_c + self.n_c*self.n_s, :] = distance_feet_ROM(w_p, i_s, i_c, "y")
-                
+                idx = i_s*self.n_c + i_c
+                jac[  idx] = self.grad_distance_feet_ROM(w, i_c, i_s, "x", self.p_nom_x)
+                jac[N+idx] = self.grad_distance_feet_ROM(w, i_c, i_s, "y", self.p_nom_y)
                 
         return jac
     
@@ -118,4 +112,4 @@ class c_RangeOfMotion:
         '''
         return amount of constraint variables
         '''
-        return self.n_s*self.n_c*self.n_f
+        return self.n_s*self.n_c
