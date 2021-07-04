@@ -22,8 +22,10 @@ class FootPos:
         #self.n_u = problem.n_u     # number of lambda (vertex weights) PER STEP
         #self.n_w_u = problem.n_w_u  # number of total lambda values
         #self.n_w_c = problem.n_w_c  # number of com optimization variables
+        self.n_w_p = problem.n_w_p
         self.w_p = w_p
         assert(len(w_p)==problem.n_w_p)
+        
         
     def get_foot_pos(self, k_s, dim):
         '''return position of all n_f feet in step k in dimension dim'''
@@ -35,3 +37,20 @@ class FootPos:
             return pos[1::2]
         else:
             raise ValueError(f"there is no such dim {dim}")
+            
+            
+    def grad_get_foot_pos(self, k_s, dim):
+        '''gradient of get_feet_pos wrt w_p
+        returns gradient as well as array containing indices of nonzero elements'''
+        grad = np.zeros((self.n_w_p))
+        if dim=="x":
+            offset = 0
+        elif dim=="y":
+            offset = 1
+        else:
+            raise ValueError(f"there is no such dim {dim}")
+        idx = np.zeros(self.n_f, dtype=int)
+        for i_f in range(self.n_f):
+            idx[i_f] = 2*self.n_f*k_s + i_f*2 + offset
+            grad[idx[i_f]] = 1
+        return grad, idx

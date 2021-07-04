@@ -50,6 +50,8 @@ class COMIniFiPos:
         jac.fill('c', 5, optvar.com.grad_get_c(self.T, "x", 1))
         jac.fill('c', 6, optvar.com.grad_get_c(self.T, "y", 0))
         jac.fill('c', 7, optvar.com.grad_get_c(self.T, "y", 1))
+        
+        jac.release()
     
     
     def amount(self):

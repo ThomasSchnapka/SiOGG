@@ -46,46 +46,64 @@ class SystemDynamics:
         return d
     
     
+    def fill_jacobian(self, jac, optvar):
+        '''jacobian of constraint'''
+        jac.prepare(self.amount())
+        
+        for i_c in range(self.n_c*self.n_s):
+            for i_u in range(3):
+                jac.fill('c', 6*i_c+i_u  , self.grad_c_dynamic_equation(optvar, i_c, i_u, "x"))
+                jac.fill('p', 6*i_c+i_u  , self.grad_p_dynamic_equation(optvar, i_c, i_u, "x"))
+                jac.fill('u', 6*i_c+i_u  , self.grad_u_dynamic_equation(optvar, i_c, i_u, "x"))
+                jac.fill('c', 6*i_c+i_u+3, self.grad_c_dynamic_equation(optvar, i_c, i_u, "y"))
+                jac.fill('p', 6*i_c+i_u+3, self.grad_p_dynamic_equation(optvar, i_c, i_u, "y")) 
+                jac.fill('u', 6*i_c+i_u+3, self.grad_u_dynamic_equation(optvar, i_c, i_u, "y"))
+        jac.release()
+        
+    
     def dynamic_equation(self, optvar, k_c, k_u, dim):
         '''
         return result of dynamic equation
-        k_u : number of COP inside COM spline (for each k_c there are 3 k_d)
+        k_u : number of COP inside COM spline (for each k_c there are 3 k_u)
         '''
         assert(k_u < 3)
-        t_k = k_u*self.T_c/2
-        d = 0.0+optvar.com.eval_spline(t_k, dim, k_c, der=2)
+        t_k = k_u*self.T_c*0.5 # local spline time
+        d = optvar.com.eval_spline(t_k, dim, k_c, der=2)
         d -= (self.g/self.h)*(  optvar.com.eval_spline(t_k, dim, k_c, der=0)
-                              - optvar.cop.get_u(k_c, k_u, dim))
+                              - optvar.cop.get_cop(k_c, k_u, dim))
         assert(type(d)==np.float64)
         return d
     
     
-    def grad_dynamic_equation(self, w, t_k, dim, k):
+    def grad_c_dynamic_equation(self, optvar, k_c, k_u, dim):
         '''
-        return gradient of dynamic equation
+        gradient of dynamic equation wrt COM position
         '''
-        eps = np.sqrt(np.finfo(float).eps)
-        d = optimize.approx_fprime(w, self.dynamic_equation, eps, t_k, dim, k)
-        
-        #d1 = self.com.grad_eval_spline(t_k, dim, k, der=2)
-        #d1 -= (self.g/self.h)*(  self.com.grad_eval_spline(t_k, dim, k, der=0)
-        #                       - self.cop.grad_get_u(w, t_k, dim, k))
-        #print(d-d1)
-        return d
+        assert(k_u < 3)
+        t_k = k_u*self.T_c*0.5
+        grad = optvar.com.grad_eval_spline(t_k, dim, k_c, der=2)
+        grad -= (self.g/self.h)*(optvar.com.grad_eval_spline(t_k, dim, k_c, der=0))
+        return grad
     
     
-    def jacobian(self, w):
-        '''return jacobian of constraints'''
-        jac = np.zeros((6*self.n_c*self.n_s, self.n_optvar))
-        
-        for i_c in range(self.n_c*self.n_s):
-            jac[6*i_c+0] = self.grad_dynamic_equation(w,          0, "x", i_c)
-            jac[6*i_c+1] = self.grad_dynamic_equation(w, self.T_c/2, "x", i_c)
-            jac[6*i_c+2] = self.grad_dynamic_equation(w,   self.T_c, "x", i_c)
-            jac[6*i_c+3] = self.grad_dynamic_equation(w,          0, "y", i_c)
-            jac[6*i_c+4] = self.grad_dynamic_equation(w, self.T_c/2, "y", i_c)
-            jac[6*i_c+5] = self.grad_dynamic_equation(w,   self.T_c, "y", i_c)
-        return jac
+    def grad_p_dynamic_equation(self, optvar, k_c, k_u, dim):
+        '''
+        gradient of dynamic equation wrt w_p
+        '''
+        assert(k_u < 3)
+        t_k = k_u*self.T_c*0.5
+        grad = -(self.g/self.h)*optvar.cop.grad_p_get_cop(k_c, k_u, dim)
+        return grad
+    
+    
+    def grad_u_dynamic_equation(self, optvar, k_c, k_u, dim):
+        '''
+        gradient of dynamic equation wrt w_u
+        '''
+        assert(k_u < 3)
+        t_k = k_u*self.T_c*0.5
+        grad = -(self.g/self.h)*optvar.cop.grad_u_get_cop(k_c, k_u, dim)
+        return grad
     
     
     def amount(self):

@@ -91,6 +91,7 @@ class COMSplineContinuity:
                        optvar.com.grad_eval_spline(self.T_c, "y",     i, 1)
                       -optvar.com.grad_eval_spline(     0.0, "y", (i+1), 1)
                       ))
+        jac.release()
     
     
     def amount(self):

@@ -123,13 +123,6 @@ class CenterOfMass:
             raise ValueError
         return grad
        
-        
-        #w_iter = np.zeros(self.n_optvar)
-        #for i in range(self.n_w_c):
-        #    w_iter[i] = 1
-        #    grad[i] = self.eval_spline(w_iter, t_k, dim, k, der)
-        #    w_iter[i] = 0
-        #return grad
     
     
     def get_c(self, t, dim, der=0):
