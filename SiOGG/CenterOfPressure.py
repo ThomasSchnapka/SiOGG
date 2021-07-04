@@ -14,19 +14,19 @@ construction of optimization variable w_p:
 """
 
 import numpy as np
-from OptvarVertexWeight import OptvarVertexWeight
-from OptvarFootPos import OptvarFootPos
 
 class CenterOfPressure:
-    def __init__(self, problem):
+    def __init__(self, problem, footpos, vertexweight):
         self.problem = problem
-        self.n = problem.n          # number of COM splines per step
+        self.footpos = footpos
+        self.vertexweight = vertexweight
+        self.n_c = problem.n_c          # number of COM splines per step
         self.n_s = problem.n_s      # number of steps
         self.n_f = problem.n_f      # number of feet
-        self.n_u = problem.n_u      # number of lambda (vertex weights) PER STEP
-        self.n_w_c = problem.n_w_c  # number of com optimization variables
-        self.n_w_p = problem.n_w_p  # number of total leg position variables
-        self.n_w_u = problem.n_w_u  # number of total lambda values
+        #self.n_u = problem.n_u      # number of lambda (vertex weights) PER STEP
+        #self.n_w_c = problem.n_w_c  # number of com optimization variables
+        #self.n_w_p = problem.n_w_p  # number of total leg position variables
+        #self.n_w_u = problem.n_w_u  # number of total lambda values
         self.n_optvar = problem.n_optvar
         
         self.T_c = problem.T_c      # time spend in each COM spline
@@ -54,16 +54,15 @@ class CenterOfPressure:
     #        u += lambda_u@w_p_s
     #    return u
     
-    def get_u(self, w, t_k, dim, k):
+    def get_u(self, k_c, k_u, dim):
         '''
         Return value of COP in desired spline interval and dimension
 
         Parameters
         ----------
-        w : whole optimization vector
-        t_k : local spline time
-        dim : dimension to evaluate, either "x" oder "y"
-        k : number of spline segment to evaluate
+        k_c : number of COM spline to evaluate in
+        k_u : number of vertex weight in corresponding COM spline
+        dim : dimension to evaluate, either "x" or "y"
 
         Returns
         -------
@@ -71,18 +70,24 @@ class CenterOfPressure:
 
         '''
         assert(dim=="x" or dim=="y")
+        assert(k_c <= self.problem.n_s*self.problem.n_c)
+        assert(k_u <= 3)
         
-        w_u = OptvarVertexWeight(w, self.problem)
-        w_p = OptvarFootPos(w, self.problem)
+        #w_u = OptvarVertexWeight(w, self.problem)
+        #w_p = OptvarFootPos(w, self.problem)
         
         # determine which u segment is corresponding to t_k
         #k_s = int(0.999*k/self.n)                         # number of step
         #k_u = self.n_u*k_s + int(self.n_u*0.999*t_k/self.T_c)  # number of lambda vector
-        k_s = int(k//self.n)                         # number of step
-        k_u = self.n_u*k_s + int((self.n_u**t_k)//self.T_c)  # number of lambda vector
+        #k_s = int(k//self.n_c)                         # number of step
+        #k_u = self.n_u*k_s + int((self.n_u**t_k)//self.T_c)  # number of lambda vector
 
-        feet_pos = w_p.get_feet_pos(k_s, dim)
-        lambda_u = w_u.get_lambda_u(k_u)
+        #feet_pos = w_p.get_feet_pos(k_s, dim)
+        #lambda_u = w_u.get_lambda_u(k_u)
+        
+        k_s = int(k_c//self.n_c)                    # number of step
+        feet_pos = self.footpos.get_foot_pos(k_s, dim)
+        lambda_u = self.vertexweight.get_lambda(k_c, k_u)
         
         val = lambda_u@feet_pos 
         

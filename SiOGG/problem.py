@@ -6,17 +6,21 @@ import cyipopt
 from scipy.linalg import block_diag
 
 from CostFunction import CostFunction
-from c_COMSplineContinuity import c_COMSplineContinuity
-from c_COMIniFiPos import c_COMIniFiPos
-from c_SystemDynamics import c_SystemDynamics
-from c_RangeOfMotion import c_RangeOfMotion
+from Jacobian import Jacobian
+from constraints.COMSplineContinuity import COMSplineContinuity
+from constraints.COMIniFiPos import COMIniFiPos
+from constraints.SystemDynamics import SystemDynamics
+from constraints.RangeOfMotion import RangeOfMotion
+from constraints.UnilateralForces import UnilateralForces
+
+from OptVar import OptVar
 
 ### default parameters ######################################################
 
 # geometry
-r = 0.02    # half of edge length of RoM
+r = 0.1       # half of edge length of RoM
 h = 0.50      # hight of COM
-p_nom = np.array([[0.2, -0.2],
+p_nom = np.array([[0.3, -0.3],
                   [  0,    0]])
 
 # contact sequence
@@ -25,23 +29,23 @@ p_nom = np.array([[0.2, -0.2],
 #              [1, 1, 1, 1]])
 
 c = np.array([[1, 1],
-              [1, 0],
+              [1, 1],
               [1, 1]])
 
 
 # paramters
 n_s = c.shape[0]    # number of steps
 n_f = 2# 4     # number of feet
-n_u = 9    # number of lambda (vertex weights) PER STEP
-n = 3   # number of quartic polynomials describing the COM motion PER STEP
+#n_u = 9    # number of lambda (vertex weights) PER STEP
+n_c = 3   # number of quartic polynomials describing the COM motion PER STEP
 
-T_s = 1   # time per step
+T_s = 0.8   # time per step
 
 # initial conditions
 x_com_0 = np.array([[0.1, 0.0],       # [dimension][derivative]
                     [0.0, 0.0]])
 x_com_T = np.array([[0.0, 0.0,],       # [dimension][derivative]
-                    [0.0, 0.0]])
+                    [0.1, 0.0]])
 
 
 
@@ -57,8 +61,8 @@ class Problem:
     def __init__(self,
                  c=c,
                  n_f=n_f,
-                 n_u=n_u,
-                 n=n,
+                 #n_u=n_u,
+                 n_c=n_c,
                  T_s=T_s,
                  x_com_0=x_com_0,
                  x_com_T=x_com_T,
@@ -78,8 +82,8 @@ class Problem:
         # paramters
         self.n_s = c.shape[0]    # number of steps
         self.n_f = n_f     # number of feet
-        self.n_u = n_u    # number of lambda (vertex weights) PER STEP
-        self.n = n    # number of quartic polynomials describing the COM motion PER STEP
+        #self.n_u = n_u    # number of lambda (vertex weights) PER STEP
+        self.n_c = n_c    # number of quartic polynomials describing the COM motion PER STEP
         
         self.T_s = T_s  # time per step (T must be multiple of T_s)
         
@@ -87,12 +91,12 @@ class Problem:
         # resulting by the base 2 representation
         
         self.T = round(self.n_s*self.T_s, 9)       # total horizon time
-        self.T_u = round(self.T_s/self.n_u, 9)     # time interval for lambda (vertex weights)
-        self.T_c = round(self.T_s/self.n, 9)       # time spend in each COM spline
+        #self.T_u = round(self.T_s/self.n_u, 9)     # time interval for lambda (vertex weights)
+        self.T_c = round(self.T_s/self.n_c, 9)       # time spend in each COM spline
         
-        self.n_w_c = int(2*5*n*self.n_s)
+        self.n_w_c = int(2*5*n_c*self.n_s)
         self.n_w_p = int(2*n_f*self.n_s)
-        self.n_w_u = int(n_f*n_u*n_s)
+        self.n_w_u = int(n_f*n_s*3)
         self.n_optvar = self.n_w_c + self.n_w_p +  self.n_w_u   # length of optimization vector
         
         
@@ -105,15 +109,18 @@ class Problem:
         self.costFunction = CostFunction(self)
         
         # constraints
-        self.comSplineContinuity = c_COMSplineContinuity(self)
-        self.comIniFiPos = c_COMIniFiPos(self)
-        self.systemDynamics = c_SystemDynamics(self)
-        self.rangeOfMotion = c_RangeOfMotion(self)
+        self.comSplineContinuity = COMSplineContinuity(self)
+        self.comIniFiPos = COMIniFiPos(self)
+        self.systemDynamics = SystemDynamics(self)
+        self.rangeOfMotion = RangeOfMotion(self)
+        self.unilateralForces = UnilateralForces(self)
+        
         self.n_constr = 0
-        #self.n_constr = self.comSplineContinuity.amount()  # number of constraints
-        #self.n_constr += self.comIniFiPos.amount() 
+        self.n_constr = self.comSplineContinuity.amount()  # number of constraints
+        self.n_constr += self.comIniFiPos.amount() 
         #self.n_constr += self.systemDynamics.amount() 
-        self.n_constr += self.rangeOfMotion.amount() 
+        #self.n_constr += self.rangeOfMotion.amount() 
+        #self.n_constr += self.unilateralForces.amount()
         
         # ensure correct dimension of input data
         assert(self.p_nom.shape[0] == self.n_f)
@@ -124,41 +131,73 @@ class Problem:
         
     def objective(self, w):
         '''The callback for calculating the objective'''
-        #return np.sum(w)
-        return self.costFunction.cost(w)
+        assert(len(w) == self.n_optvar)
+        #return w@w
+        optvar = OptVar(self, w)
+        return self.costFunction.cost(optvar)
 
 
     def gradient(self, w):
         '''The callback for calculating the gradient'''
-        return self.costFunction.gradient(w)
+        optvar = OptVar(self, w)
+        return self.costFunction.gradient(optvar)
+        #return 2*w
 
 
     def constraints(self, w):
         '''The callback for calculating the constraints'''
         #cons = np.zeros((self.n_constr, self.n_optvar))
-        #cons = np.hstack((#self.comSplineContinuity.constraint(w),
-         #                 self.comIniFiPos.constraint(w),
-                          #self.systemDynamics.constraint(w),
-          #                self.rangeOfMotion.constraint(w)
-           #               ))
-        cons = self.rangeOfMotion.constraint(w)
+        optvar = OptVar(self, w)
+        cons = np.hstack((self.comSplineContinuity.constraint(optvar),
+                          self.comIniFiPos.constraint(optvar),
+        #                  self.systemDynamics.constraint(optvar),
+        #                  self.rangeOfMotion.constraint(optvar),
+        #                  self.unilateralForces.constraint(optvar)
+                          ))
+        #cons = self.comIniFiPos.constraint(optvar)
+        ##cons = self.comSplineContinuity.constraint(optvar)
+        assert(len(cons) == self.n_constr)
         #cons = self.systemDynamics.constraint(w)
-        print("cost", np.around(self.costFunction.cost(w), 3),
-              "cons", np.around(np.sum(np.square(cons)), 3))
+        #a = np.sum(np.square(self.comSplineContinuity.constraint(optvar)))
+        #b = np.sum(np.square(self.comIniFiPos.constraint(optvar)))
+        #c = np.sum(np.square(self.systemDynamics.constraint(optvar)))
+        #d = np.sum(np.square(self.rangeOfMotion.constraint(optvar)))
+        #e = np.sum(np.square(self.unilateralForces.constraint(optvar)))
+        
+        
+        #print("cost", np.around(self.costFunction.cost(optvar), 5),
+         #     "cons", np.around(np.sum(np.square(cons)), 5))#"|",
+             # np.around(a, 3), np.around(b,3), np.around(c,3), np.around(d,3),
+              #np.around(e, 3))
+        #print(self.comIniFiPos.constraint(w))
         return cons
 
 
     def jacobian(self, w):
         '''The callback for calculating the Jacobian'''
-        #jac = np.vstack((#self.comSplineContinuity.jacobian(w),
-        #                 self.comIniFiPos.jacobian(w),
-        #                 #self.systemDynamics.jacobian(w),
-        #                 self.rangeOfMotion.jacobian(w)
+        print("jacobian got called")
+        optvar = OptVar(self, w)
+        jac = Jacobian(self)
+        self.comSplineContinuity.fill_jacobian(jac, optvar)
+        self.comIniFiPos.fill_jacobian(jac, optvar)
+        #                 self.comIniFiPos.jacobian(optvar),
+        #                 self.systemDynamics.jacobian(optvar),
+        #                 self.rangeOfMotion.jacobian(optvar),
+        #                 self.unilateralForces.jacobian(optvar)
         #                  ))
-        jac = self.rangeOfMotion.jacobian(w)
-        #ac = self.systemDynamics.jacobian(w)
-        jac = np.ravel(jac)
-        return jac
+        #jac = self.rangeOfMotion.jacobian(w)
+        #jac = self.comIniFiPos.jacobian(w)
+        return jac.output()
+    
+    
+    def intermediate(self, alg_mod, iter_count, obj_value, inf_pr, inf_du, mu,
+                     d_norm, regularization_size, alpha_du, alpha_pr,
+                     ls_trials):
+        """Prints information at every Ipopt iteration."""
+
+        msg = "Objective value at iteration #{:d} is - {:g}"
+
+        print(msg.format(iter_count, obj_value))
     
     
     def solve(self):
@@ -168,11 +207,14 @@ class Problem:
         #
         print("[problem.py] constructing problem")
         w0 = np.random.rand(self.n_optvar)
-        w0[self.n_w_c:-self.n_w_u] = 0
+        #w0[:self.n_w_c] = 0
+        #w0[self.n_w_c:-self.n_w_u] = 0
         #w0 = np.zeros(self.n_optvar)
     
-        lb = np.ones(self.n_optvar)*-9999
-        ub = np.ones(self.n_optvar)*9999
+        lb = np.ones(self.n_optvar)*-999
+        lb[-self.n_w_u:] = 0.0
+        ub = np.ones(self.n_optvar)*999
+        ub[-self.n_w_u:] = 1.0
     
         cl = np.zeros(self.n_constr)
         cu = np.zeros(self.n_constr)
@@ -190,26 +232,22 @@ class Problem:
         #
         # Set solver options
         #
-        #nlp.addOption('derivative_test', 'second-order')
+        nlp.add_option('derivative_test', 'first-order')
+        #nlp.add_option("jacobian_approximation", "finite-difference-values")
+        
+        #nlp.add_option("bound_relax_factor", 0.0)
+        nlp.add_option("max_cpu_time", 30.0)
         #nlp.add_option('mu_strategy', 'adaptive')
-        nlp.add_option('tol', 1e-5)
-        nlp.add_option('max_iter', 50)
+        #nlp.add_option('tol', 1e-8)
+        #nlp.add_option('max_iter', 50)
     
-        #
-        # Scale the problem (Just for demonstration purposes)
-        #
-        #nlp.set_problem_scaling(
-        #    obj_scaling=2,
-        #    x_scaling=[1, 1, 1, 1]
-        #    )
-        #nlp.add_option('nlp_scaling_method', 'user-scaling')
-    
+        
         #
         # Solve the problem
         #
         print("[problem.py] solving problem")
         w, info = nlp.solve(w0)
-        print("[problem.py] found optimal solution!")
+        print("Status: ", info['status_msg'])
         return w
         
         
@@ -218,13 +256,10 @@ if __name__ == '__main__':
     # test
     problem = Problem()
     w = problem.solve()
+    optvar = OptVar(problem, w)
     
     #'''
     import matplotlib.pyplot as plt
-    from CenterOfMass import CenterOfMass
-    from CenterOfPressure import CenterOfPressure
-    from OptvarFootPos import OptvarFootPos
-    from OptvarVertexWeight import OptvarVertexWeight
     
     plt.figure(figsize=(10, 10))
     plt.title("COM and COP")
@@ -235,40 +270,35 @@ if __name__ == '__main__':
     
     # plot COM
     n_eval = 50
-    com = CenterOfMass(problem)
     tsteps = np.linspace(0, problem.T, n_eval)
     com_x = np.zeros(n_eval)
     com_y = np.zeros(n_eval)
     for i in range(n_eval):
-        com_x[i] = com.get_c(w, tsteps[i], "x")
-        com_y[i] = com.get_c(w, tsteps[i], "y")
+        com_x[i] = optvar.com.get_c(tsteps[i], "x")
+        com_y[i] = optvar.com.get_c(tsteps[i], "y")
     plt.plot(tsteps, com_x, "o-", label="com_x")
     plt.plot(tsteps, com_y, "o-", label="com_y")
     
     # plot COP
-    cop = CenterOfPressure(problem)
-    n_eval = problem.n*problem.n_s*3
+    n_eval = problem.n_c*problem.n_s*3
     tsteps = np.linspace(0, problem.T, n_eval)
     cop_x = np.zeros(n_eval)
     cop_y = np.zeros(n_eval)
-    for i in range(problem.n*problem.n_s):
-        cop_x[3*i+0] = cop.get_u(w,             0, "x", i)
-        cop_x[3*i+1] = cop.get_u(w, problem.T_c/2, "x", i)
-        cop_x[3*i+2] = cop.get_u(w,   problem.T_c, "x", i)
-        cop_y[3*i+0] = cop.get_u(w,             0, "y", i)
-        cop_y[3*i+1] = cop.get_u(w, problem.T_c/2, "y", i)
-        cop_y[3*i+2] = cop.get_u(w,   problem.T_c, "y", i)
+    for i_c in range(problem.n_c*problem.n_s):
+        for i_u in range(3):
+            cop_x[3*i_c+i_u] = optvar.cop.get_u(i_c, i_u, "x")
+            cop_y[3*i_c+i_u] = optvar.cop.get_u(i_c, i_u, "y")
+            
     plt.plot(tsteps, cop_x, "v-", label="cop_x")
     plt.plot(tsteps, cop_y, "v-", label="cop_y")
     
     # plot foot location
-    ofp = OptvarFootPos(w, problem)
     tsteps=np.linspace(0, problem.T, problem.n_s)
     foot_pos_x = np.zeros((problem.n_s, problem.n_f))
     foot_pos_y = np.zeros((problem.n_s, problem.n_f))
     for i in range(problem.n_s):
-        foot_pos_x[i] = ofp.get_feet_pos(i, "x")
-        foot_pos_y[i] = ofp.get_feet_pos(i, "y")
+        foot_pos_x[i] = optvar.footpos.get_foot_pos(i, "x")
+        foot_pos_y[i] = optvar.footpos.get_foot_pos(i, "y")
         
     for i in range(problem.n_f):
         plt.plot(tsteps, foot_pos_x[:,i], "o", markersize=10, label=(str(i)+ "_x"))
@@ -283,14 +313,15 @@ if __name__ == '__main__':
     # plot lambda values
     plt.figure(figsize=(10, 5))
     plt.title("weights")
-    ovw = OptvarVertexWeight(w, problem)
-    weights = np.zeros((problem.n_u*problem.n_s, problem.n_f))
-    for i in range(problem.n_u*problem.n_s):
-        weights[i] = ovw.get_lambda_u(i)
+    weights = np.zeros((3*problem.n_c*problem.n_s, problem.n_f))
+    for i_c in range(problem.n_c*problem.n_s):
+        for i_u in range(3):
+            weights[3*i_c + i_u] = optvar.vertexweight.get_lambda(i_c, i_u)
         
     for i in range(problem.n_f):
         plt.plot(weights[:,i], label=str(i))
     
+    plt.ylim((0, 1))
     plt.legend()
     plt.show()
     
