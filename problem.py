@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
+'''
+Non-linear trajectory optimization using IPOPT based on https://arxiv.org/abs/1705.10313
 
+This is the rapid prototype of the later hopefully real-time-capable version
+
+To-Do:
+    - include variable bounds into constraints (incl.constraint tolerance)
+    - make version that also includes Z-movement
+    - try results in PyBullet
+    - rewrite code into C++ if results are sufficient
+    
+'''
 
 import numpy as np
 import cyipopt
@@ -237,7 +248,7 @@ class Problem:
                      ls_trials):
         """Prints information at every Ipopt iteration."""
 
-        msg = "Objective value at iteration #{:d} is - {:g}"
+        msg = "Iteration #{:d} objective {:g}"
 
         print(msg.format(iter_count, obj_value))
     
@@ -248,8 +259,19 @@ class Problem:
         # Define the problem
         #
         print("[problem.py] constructing problem")
-        w0 = np.random.rand(self.n_optvar)-0.5
-        w0[:-self.n_w_u] = 1.0/self.n_f
+        
+        # open last optimal vector if available
+        
+        try:
+            w0 = np.load("last_optimal_vector.npy")
+            if len(w0) != self.n_optvar:
+                print("[problem.py] last optimal vector has wrong shape")
+                raise RuntimeError()
+            print("[problem.py] using last optimal value for warmstart")
+        except:
+            print("[problem.py] constructing new value for warmstart")
+            w0 = np.random.rand(self.n_optvar)-0.5
+            w0[:-self.n_w_u] = 1.0/self.n_f
     
         lb = np.ones(self.n_optvar)*-999
         #lb[self.n_w_p:-self.n_w_u] = -100.0
@@ -258,8 +280,8 @@ class Problem:
         #ub[self.n_w_p:-self.n_w_u] = 100.0
         ub[-self.n_w_u:] = 1.0
     
-        cl = np.ones(self.n_constr)*-1e-3
-        cu = np.ones(self.n_constr)*1e-3
+        cl = np.ones(self.n_constr)*-1e-4
+        cu = np.ones(self.n_constr)*1e-4
     
         nlp = cyipopt.Problem(
             n=self.n_optvar,
@@ -282,13 +304,15 @@ class Problem:
         #nlp.add_option("max_cpu_time", 100.0)
         #nlp.add_option('mu_strategy', 'adaptive')
         nlp.add_option('tol', 1e-3)
-        nlp.add_option('max_iter', 1000)
+        nlp.add_option('max_iter', 100)
         
         #
         # Solve the problem
         #
         print("[problem.py] solving problem")
         w, info = nlp.solve(w0)
+        #if info['status'] == 0:
+        np.save("last_optimal_vector", w)
         print("Status: ", info['status_msg'])
         return w
         
@@ -303,12 +327,16 @@ if __name__ == '__main__':
     #'''
     import matplotlib.pyplot as plt
     
-    plt.figure(figsize=(10, 10))
-    plt.title("COM and COP")
+    fig, [axx, axy] = plt.subplots(2, 1, sharex=True, figsize=(10, 10))
+    fig.suptitle("COM and COP trajectory", y=0.93, size=24)
+    
+    # plot lines indicating spline segments
     n_hlines = int(problem.T/problem.T_c)
-    for i in range(n_hlines+1):
-        plt.axvline(i*problem.T_c, linestyle="--", color="k")
-    plt.axhline(0, linestyle="--", color="k")
+    for i in range(n_hlines+2):
+        axx.axvline(i*problem.T_c, linestyle="--", color="k", lw=0.5)
+        axy.axvline(i*problem.T_c, linestyle="--", color="k", lw=0.5)
+    axx.axhline(0, linestyle="--", color="k", lw=0.5)
+    axy.axhline(0, linestyle="--", color="k", lw=0.5)
     
     # plot COM
     n_eval = 50
@@ -318,8 +346,8 @@ if __name__ == '__main__':
     for i in range(n_eval):
         com_x[i] = optvar.com.get_c(tsteps[i], "x")
         com_y[i] = optvar.com.get_c(tsteps[i], "y")
-    plt.plot(tsteps, com_x, "o-", label="com_x", color="tab:blue")
-    plt.plot(tsteps, com_y, "o-", label="com_y", color="tab:orange")
+    axx.plot(tsteps, com_x,  marker="o", label="COM", color="tab:blue")
+    axy.plot(tsteps, com_y,  marker="o", label="COM", color="tab:orange")
     
     # plot COP
     n_eval = problem.n_c*problem.n_s*3
@@ -331,8 +359,8 @@ if __name__ == '__main__':
             cop_x[3*i_c+i_u] = optvar.cop.get_cop(i_c, i_u, "x")
             cop_y[3*i_c+i_u] = optvar.cop.get_cop(i_c, i_u, "y")
             
-    plt.plot(tsteps, cop_x, "v-", label="cop_x", color="tab:blue")
-    plt.plot(tsteps, cop_y, "v-", label="cop_y", color="tab:orange")
+    axx.plot(tsteps, cop_x, linestyle="--", marker="v", label="COP", color="tab:cyan", alpha=0.8)
+    axy.plot(tsteps, cop_y, linestyle="--", marker="v", label="COP", color="tab:red", alpha=0.8)
     
     # plot foot location
     tsteps=np.linspace(0, problem.T, problem.n_s)
@@ -342,14 +370,41 @@ if __name__ == '__main__':
         foot_pos_x[i] = optvar.footpos.get_foot_pos(i, "x")
         foot_pos_y[i] = optvar.footpos.get_foot_pos(i, "y")
         
-    for i in range(problem.n_f):
-        plt.plot(tsteps, foot_pos_x[:,i], "<", markersize=10, label=(str(i)+ "_x"), color="tab:blue")
-        plt.plot(tsteps, foot_pos_y[:,i], ">", markersize=10, label=(str(i)+ "_y"), color="tab:orange")
+    for i in range(0, problem.n_f):
+        color=(i/problem.n_f)*np.ones(problem.n_s)
+        axx.scatter(tsteps, foot_pos_x[:,i], marker=">", s=150, 
+                    label=("leg " + str(i)), #color="tab:blue",
+                    cmap="viridis", color=color)
+        axy.scatter(tsteps, foot_pos_y[:,i], marker=">", s=150, 
+                    label=("leg " + str(i)), #color="tab:orange",
+                    cmap="viridis", color=color)
+        
+    # plot range of motion
+    for i_f in range(0, problem.n_f):
+        for i_s in range(0, problem.n_s):
+            # x-Dimension
+            com_x = optvar.com.get_c(tsteps[i_s], "x")
+            px_y = problem.p_nom[0, i_f] - problem.r/2 + com_x
+            px_x = tsteps[i_s] - problem.r/2
+            axx.add_patch(plt.Rectangle((px_x, px_y), problem.r, problem.r, 
+                                        color='k', lw=1, fill=False, alpha=0.5))
+            # y-Dimension
+            com_y = optvar.com.get_c(tsteps[i_s], "y")
+            py_y = problem.p_nom[1, i_f] - problem.r/2 + com_y
+            py_x = tsteps[i_s] - problem.r/2
+            axy.add_patch(plt.Rectangle((py_x, py_y), problem.r, problem.r, 
+                                        color='k', lw=1, fill=False, alpha=0.5))
+    # add ROM patches to legend workaround
+    axx.plot([],[], color='k', lw=1, alpha=0.5, label="ROM")
+    axy.plot([],[], color='k', lw=1, alpha=0.5, label="ROM")
     
-    
-    
-    plt.legend()
-    plt.ylim((-0.5, 0.5))
+    axx.set_ylabel("x")
+    axy.set_ylabel("y")
+    axy.set_xlabel("t [s]")
+    axx.legend(bbox_to_anchor=(1.05, 1))
+    axy.legend(bbox_to_anchor=(1.05, 1))
+    axx.set_ylim((-0.5, 0.5))
+    axy.set_ylim((-0.5, 0.5))
     plt.show()
     
     # plot lambda values
@@ -372,10 +427,10 @@ if __name__ == '__main__':
     #jac = problem.jacobian(w)
     #jac = np.reshape(jac, (int(len(jac)/problem.n_optvar), problem.n_optvar))
     
-    mat = plt.matshow(problem.jacobian(w).reshape(problem.n_constr, problem.n_optvar))
-    plt.colorbar(mat)
-    plt.title("Current Jacobian")
-    plt.show()
+    #mat = plt.matshow(problem.jacobian(w).reshape(problem.n_constr, problem.n_optvar))
+    #plt.colorbar(mat)
+    #plt.title("Current Jacobian")
+    #plt.show()
     
     
     
