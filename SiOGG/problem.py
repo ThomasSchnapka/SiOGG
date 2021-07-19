@@ -5,7 +5,7 @@ Non-linear trajectory optimization using IPOPT based on https://arxiv.org/abs/17
 This is the rapid prototype of the later hopefully real-time-capable version
 
 To-Do:
-    - include variable bounds into constraints (incl.constraint tolerance)
+    - check ROM constraint with problem.rangeOfMotion.constraint(OptVar(problem, w)) < problem.r
     - make version that also includes Z-movement
     - try results in PyBullet
     - rewrite code into C++ if results are sufficient
@@ -28,6 +28,8 @@ from CostFunction import CostFunction
 from Jacobian import Jacobian
 from OptVar import OptVar
 
+from plot_utils import plot_results
+
 import warnings
 warnings.simplefilter("error", np.VisibleDeprecationWarning)
 
@@ -37,36 +39,41 @@ warnings.simplefilter("error", np.VisibleDeprecationWarning)
 # geometry
 r = 0.2       # half of edge length of RoM
 h = 0.50      # hight of COM
-p_nom = np.array([[0.3, -0.3],
-                  [  0,    0]])
+p_nom = np.array([[  0,    0],
+                  [0.3, -0.3]])
+#p_nom = np.array([[0.3, -0.3,  0.3, -0.3],
+#                  [0.3,  0.3, -0.3, -0.3]])
+
 
 # contact sequence
-#c = np.array([[1, 1, 1, 1],
-#              [1, 1, 1, 0],
-#              [1, 1, 1, 1]])
 
 cont_seq = np.array([[1, 1],
-                    [1, 0],
-                    [1, 1]])
+                     [1, 0],
+                     [1, 1]])
+
+#cont_seq = np.array([[1, 1, 1, 1],
+#                     [1, 0, 1, 1],
+#                     [1, 1, 1, 1]])
 
 
 # paramters
 n_f = 2# 4     # number of feet
 #n_u = 9    # number of lambda (vertex weights) PER STEP
-n_c = 2   # number of quartic polynomials describing the COM motion PER STEP
+n_c = 1   # number of quartic polynomials describing the COM motion PER STEP
 
 T_s = 0.8   # time per step
 
 # initial conditions
-x_com_0 = np.array([[0.1, 0.0],       # [dimension][derivative]
+x_com_0 = np.array([[0.0, 0.0],        # [dimension][derivative]
                     [0.0, 0.0]])
 x_com_T = np.array([[0.0, 0.0,],       # [dimension][derivative]
-                    [0.1, 0.0]])
+                    [0.0, 0.0]])
 
 
 
 
 ### problem class ###########################################################
+
 
 class Problem:
     '''
@@ -120,17 +127,16 @@ class Problem:
         self.x_com_0 = x_com_0
         self.x_com_T = x_com_T
         
-        
         # cost function
         self.costFunction = CostFunction(self)
         
         # constraints
-        self.comSplineContinuity = COMSplineContinuity(self)
-        self.comIniFiPos = COMIniFiPos(self)
-        self.systemDynamics = SystemDynamics(self)
+        self.comSplineContinuity = COMSplineContinuity(self, tol=1e-5)
+        self.comIniFiPos = COMIniFiPos(self, tol=1e-5)
+        self.systemDynamics = SystemDynamics(self, tol=1e-1)
+        self.unilateralForces = UnilateralForces(self, tol=1e-5)
+        self.contactForces = ContactForces(self, tol=1e-5)
         self.rangeOfMotion = RangeOfMotion(self)
-        self.unilateralForces = UnilateralForces(self)
-        self.contactForces = ContactForces(self)
         
         self.active_constraints = [
                                 self.comSplineContinuity,
@@ -146,9 +152,8 @@ class Problem:
             self.n_constr += constr.amount()
         
         # ensure correct dimension of input data
-        assert(self.p_nom.shape[0] == self.n_f)
+        assert(self.p_nom.shape[1] == self.n_f)
         assert(self.cont_seq.shape[1] == self.n_f)
-        
         
         
         
@@ -213,7 +218,6 @@ class Problem:
     
     def hessianstructure(self):
         '''The structure of the Hessian'''
-
         return np.ones((problem.n_optvar, problem.n_optvar))
 
 
@@ -248,9 +252,7 @@ class Problem:
                      ls_trials):
         """Prints information at every Ipopt iteration."""
 
-        msg = "Iteration #{:d} objective {:g}"
-
-        print(msg.format(iter_count, obj_value))
+        print(f"itr. #{iter_count} objective: {obj_value:.5f}")
     
     
     def solve(self):
@@ -271,7 +273,11 @@ class Problem:
         except:
             print("[problem.py] constructing new value for warmstart")
             w0 = np.random.rand(self.n_optvar)-0.5
-            w0[:-self.n_w_u] = 1.0/self.n_f
+            w0[:self.n_w_c] = 0
+            w0[self.n_w_c:-self.n_w_u] = np.ravel(np.tile(
+                problem.p_nom.T, (problem.n_s, 1)
+                ))
+            w0[-self.n_w_u:] = 1.0/self.n_f
     
         lb = np.ones(self.n_optvar)*-999
         #lb[self.n_w_p:-self.n_w_u] = -100.0
@@ -280,8 +286,17 @@ class Problem:
         #ub[self.n_w_p:-self.n_w_u] = 100.0
         ub[-self.n_w_u:] = 1.0
     
-        cl = np.ones(self.n_constr)*-1e-4
-        cu = np.ones(self.n_constr)*1e-4
+        #cl = np.ones(self.n_constr)*-1e-4
+        #cu = np.ones(self.n_constr)*1e-4
+        
+        # retrieve constraint bounds from active constraints
+        cl = self.active_constraints[0].constraint_bound_lower()
+        cu = self.active_constraints[0].constraint_bound_upper()
+        if len(self.active_constraints) > 1:
+            for i in range(1, len(self.active_constraints)):
+                cl = np.append(cl, self.active_constraints[i].constraint_bound_lower())
+                cu = np.append(cu, self.active_constraints[i].constraint_bound_upper())
+        assert(len(cu) == self.n_constr and len(cl) == self.n_constr)
     
         nlp = cyipopt.Problem(
             n=self.n_optvar,
@@ -296,27 +311,29 @@ class Problem:
         #
         # Set solver options
         #
-        nlp.add_option('derivative_test', 'first-order')
-        #nlp.add_option("jacobian_approximation", "finite-difference-values")
+        #nlp.add_option('derivative_test', 'first-order')
+        nlp.add_option("jacobian_approximation", "finite-difference-values")
         nlp.add_option('hessian_approximation', 'limited-memory')
         
         #nlp.add_option("bound_relax_factor", 0.0)
         #nlp.add_option("max_cpu_time", 100.0)
         #nlp.add_option('mu_strategy', 'adaptive')
-        nlp.add_option('tol', 1e-3)
-        nlp.add_option('max_iter', 100)
+        #nlp.add_option('tol', 1e-5)
+        nlp.add_option('acceptable_tol', 1e-8)
+        nlp.add_option('max_iter', 400)
         
         #
         # Solve the problem
         #
         print("[problem.py] solving problem")
         w, info = nlp.solve(w0)
-        #if info['status'] == 0:
         np.save("last_optimal_vector", w)
         print("Status: ", info['status_msg'])
         return w
         
 ### execution ################################################################
+
+plot_combined = True   # plot x/y instead of x/t and y/t
         
 if __name__ == '__main__':
     # test
@@ -324,113 +341,10 @@ if __name__ == '__main__':
     w = problem.solve()
     optvar = OptVar(problem, w)
     
-    #'''
-    import matplotlib.pyplot as plt
-    
-    fig, [axx, axy] = plt.subplots(2, 1, sharex=True, figsize=(10, 10))
-    fig.suptitle("COM and COP trajectory", y=0.93, size=24)
-    
-    # plot lines indicating spline segments
-    n_hlines = int(problem.T/problem.T_c)
-    for i in range(n_hlines+2):
-        axx.axvline(i*problem.T_c, linestyle="--", color="k", lw=0.5)
-        axy.axvline(i*problem.T_c, linestyle="--", color="k", lw=0.5)
-    axx.axhline(0, linestyle="--", color="k", lw=0.5)
-    axy.axhline(0, linestyle="--", color="k", lw=0.5)
-    
-    # plot COM
-    n_eval = 50
-    tsteps = np.linspace(0, problem.T, n_eval)
-    com_x = np.zeros(n_eval)
-    com_y = np.zeros(n_eval)
-    for i in range(n_eval):
-        com_x[i] = optvar.com.get_c(tsteps[i], "x")
-        com_y[i] = optvar.com.get_c(tsteps[i], "y")
-    axx.plot(tsteps, com_x,  marker="o", label="COM", color="tab:blue")
-    axy.plot(tsteps, com_y,  marker="o", label="COM", color="tab:orange")
-    
-    # plot COP
-    n_eval = problem.n_c*problem.n_s*3
-    tsteps = np.linspace(0, problem.T, n_eval)
-    cop_x = np.zeros(n_eval)
-    cop_y = np.zeros(n_eval)
-    for i_c in range(problem.n_c*problem.n_s):
-        for i_u in range(3):
-            cop_x[3*i_c+i_u] = optvar.cop.get_cop(i_c, i_u, "x")
-            cop_y[3*i_c+i_u] = optvar.cop.get_cop(i_c, i_u, "y")
-            
-    axx.plot(tsteps, cop_x, linestyle="--", marker="v", label="COP", color="tab:cyan", alpha=0.8)
-    axy.plot(tsteps, cop_y, linestyle="--", marker="v", label="COP", color="tab:red", alpha=0.8)
-    
-    # plot foot location
-    tsteps=np.linspace(0, problem.T, problem.n_s)
-    foot_pos_x = np.zeros((problem.n_s, problem.n_f))
-    foot_pos_y = np.zeros((problem.n_s, problem.n_f))
-    for i in range(problem.n_s):
-        foot_pos_x[i] = optvar.footpos.get_foot_pos(i, "x")
-        foot_pos_y[i] = optvar.footpos.get_foot_pos(i, "y")
-        
-    for i in range(0, problem.n_f):
-        color=(i/problem.n_f)*np.ones(problem.n_s)
-        axx.scatter(tsteps, foot_pos_x[:,i], marker=">", s=150, 
-                    label=("leg " + str(i)), #color="tab:blue",
-                    cmap="viridis", color=color)
-        axy.scatter(tsteps, foot_pos_y[:,i], marker=">", s=150, 
-                    label=("leg " + str(i)), #color="tab:orange",
-                    cmap="viridis", color=color)
-        
-    # plot range of motion
-    for i_f in range(0, problem.n_f):
-        for i_s in range(0, problem.n_s):
-            # x-Dimension
-            com_x = optvar.com.get_c(tsteps[i_s], "x")
-            px_y = problem.p_nom[0, i_f] - problem.r/2 + com_x
-            px_x = tsteps[i_s] - problem.r/2
-            axx.add_patch(plt.Rectangle((px_x, px_y), problem.r, problem.r, 
-                                        color='k', lw=1, fill=False, alpha=0.5))
-            # y-Dimension
-            com_y = optvar.com.get_c(tsteps[i_s], "y")
-            py_y = problem.p_nom[1, i_f] - problem.r/2 + com_y
-            py_x = tsteps[i_s] - problem.r/2
-            axy.add_patch(plt.Rectangle((py_x, py_y), problem.r, problem.r, 
-                                        color='k', lw=1, fill=False, alpha=0.5))
-    # add ROM patches to legend workaround
-    axx.plot([],[], color='k', lw=1, alpha=0.5, label="ROM")
-    axy.plot([],[], color='k', lw=1, alpha=0.5, label="ROM")
-    
-    axx.set_ylabel("x")
-    axy.set_ylabel("y")
-    axy.set_xlabel("t [s]")
-    axx.legend(bbox_to_anchor=(1.05, 1))
-    axy.legend(bbox_to_anchor=(1.05, 1))
-    axx.set_ylim((-0.5, 0.5))
-    axy.set_ylim((-0.5, 0.5))
-    plt.show()
-    
-    # plot lambda values
-    plt.figure(figsize=(10, 5))
-    plt.title("weights")
-    weights = np.zeros((3*problem.n_c*problem.n_s, problem.n_f))
-    for i_c in range(problem.n_c*problem.n_s):
-        for i_u in range(3):
-            weights[3*i_c + i_u] = optvar.vertexweight.get_lambda(i_c, i_u)
-        
-    for i in range(problem.n_f):
-        plt.plot(weights[:,i], label=str(i))
-    
-    plt.ylim((0, 1))
-    plt.legend()
-    plt.show()
+    plot_results(problem, optvar, plot_combined=True)
     
     
-    # for evaluating the jacobian
-    #jac = problem.jacobian(w)
-    #jac = np.reshape(jac, (int(len(jac)/problem.n_optvar), problem.n_optvar))
     
-    #mat = plt.matshow(problem.jacobian(w).reshape(problem.n_constr, problem.n_optvar))
-    #plt.colorbar(mat)
-    #plt.title("Current Jacobian")
-    #plt.show()
     
     
     

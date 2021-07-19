@@ -7,11 +7,9 @@ Area where foot tip can be is approximated by a rectangle around the foot's nomi
 
             -r < p_f[t] - c[t] - p_{nom} < r            (eq. 15)      
             
-   <=>          |p_f[t] - c[t] - p_{nom}| < r
-   <=>                           distance < r
+   <=>       |p_f[t] - c[t] - p_{nom}|    < r
+   <=>       (p_f[t] - c[t] - p_{nom})^2  < r^2
    
-   <=>      g(w, t) = /   distance - r      for distance > r
-                      \   0                 otherwise
 """
 
 import numpy as np
@@ -35,6 +33,7 @@ class RangeOfMotion:
         self.p_nom_x = problem.p_nom[0]
         self.p_nom_y = problem.p_nom[1]
         
+        #self.weight = 1e5 # weight for this constraint [EXPERIMENTAL]
         
         
     def constraint(self, optvar):
@@ -67,6 +66,7 @@ class RangeOfMotion:
         Parameters
         ----------
         foot_pos : position of foot
+        c : center of mass
         p_nom : nominal foot position of evaluated foot in evaluated dimension
         
         Returns
@@ -81,13 +81,15 @@ class RangeOfMotion:
         #    d = 0
         
         ## quadtratic
-        d = 0
-        if ((c+p_nom) - foot_pos) > self.r:
-            d = (foot_pos - (c+p_nom-self.r))**2
-        elif (foot_pos - (c+p_nom)) > self.r:
-            d = (foot_pos - (c+p_nom+self.r))**2
-        return d
+        #d = 0
+        #if ((c+p_nom) - foot_pos) > self.r:
+        #    d = (foot_pos - (c+p_nom-self.r))**2
+        #elif (foot_pos - (c+p_nom)) > self.r:
+        #    d = (foot_pos - (c+p_nom+self.r))**2
+        #return d
+        return ((foot_pos - c - p_nom)**2)#*self.weight
         
+    
     def conv_grad_constraint(self, w, foot_pos, c, p_nom):
         '''converts w to OptVar in order to be used by approx_fprime'''
         optvar = OptVar(w, self.problem)
@@ -123,7 +125,15 @@ class RangeOfMotion:
     
     
     def amount(self):
-        '''
-        return amount of constraint variables
-        '''
+        '''return amount of constraint variables'''
         return 2*self.n_s*self.n_c*self.n_f
+    
+    
+    def constraint_bound_lower(self):
+        '''return lower constraint bound'''
+        return np.ones(self.amount())*0.0
+    
+    
+    def constraint_bound_upper(self):
+        '''return upper constraint bound'''
+        return np.ones(self.amount())*(self.r**2)#*self.weight

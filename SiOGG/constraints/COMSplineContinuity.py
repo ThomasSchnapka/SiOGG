@@ -12,13 +12,15 @@ class COMSplineContinuity:
     '''
     Constraint regarding continuity of COM spline
     '''
-    def __init__(self, problem):
+    def __init__(self, problem, tol=1e-4):
         #self.n_w_c = problem.n_w_c
         #self.n_w_p = problem.n_w_p
         #self.n_w_u = problem.n_w_u
         self.T_c = problem.T_c
         self.n_junct = problem.n_c*problem.n_s-1
         self.n_optvar = problem.n_optvar
+        
+        self.tol = tol              # tolerance for upper/lower bounds
         
         
     
@@ -100,6 +102,14 @@ class COMSplineContinuity:
         here: number of junctions of COM splines
         '''
         return int(2*2*self.n_junct)
+    
+    def constraint_bound_lower(self):
+        '''return lower constraint bound'''
+        return np.ones(self.amount())*(-1)*self.tol
+    
+    def constraint_bound_upper(self):
+        '''return upper constraint bound'''
+        return np.ones(self.amount())*self.tol
         
 
 

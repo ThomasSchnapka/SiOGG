@@ -17,7 +17,7 @@ class SystemDynamics:
     '''
     Constraint regarding initial final COM position
     '''
-    def __init__(self, problem):
+    def __init__(self, problem, tol=1e-4):
         self.n_c = problem.n_c
         self.n_s = problem.n_s
         #self.n_w_c = problem.n_w_c
@@ -30,6 +30,7 @@ class SystemDynamics:
         self.T_c = problem.T_c
         self.h = problem.h
         
+        self.tol = tol              # tolerance for upper/lower bounds
         
         self.g = 9.81
         
@@ -107,7 +108,13 @@ class SystemDynamics:
     
     
     def amount(self):
-        '''
-        return amount of constraint variables
-        '''
+        '''return amount of constraint variables'''
         return 6*self.n_c*self.n_s
+    
+    def constraint_bound_lower(self):
+        '''return lower constraint bound'''
+        return np.ones(self.amount())*(-1)*self.tol
+    
+    def constraint_bound_upper(self):
+        '''return upper constraint bound'''
+        return np.ones(self.amount())*self.tol

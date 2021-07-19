@@ -9,12 +9,14 @@ class UnilateralForces:
     '''
     Constraint regarding unilateral forces
     '''
-    def __init__(self, problem):
+    def __init__(self, problem, tol=1e-4):
         self.n_s = problem.n_s
         self.n_c = problem.n_c
         self.n_f = problem.n_f
         self.n_w_non_u = problem.n_w_c + problem.n_w_p
         self.n_optvar = problem.n_optvar
+        
+        self.tol = tol              # tolerance for upper/lower bounds
         
         
     def constraint(self, optvar):
@@ -36,7 +38,15 @@ class UnilateralForces:
         return jac
         
     
-    
     def amount(self):
+        '''return amount of constraint variables'''
         return self.n_s*self.n_c*3
+    
+    def constraint_bound_lower(self):
+        '''return lower constraint bound'''
+        return np.ones(self.amount())*(-1)*self.tol
+    
+    def constraint_bound_upper(self):
+        '''return upper constraint bound'''
+        return np.ones(self.amount())*self.tol
     

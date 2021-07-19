@@ -9,7 +9,7 @@ class COMIniFiPos:
     '''
     Constraint regarding initial final COM position
     '''
-    def __init__(self, problem):
+    def __init__(self, problem, tol=1e-4):
         self.n_s = problem.n_s
         self.n_w_c = problem.n_w_c
         self.n_w_p = problem.n_w_p
@@ -20,6 +20,8 @@ class COMIniFiPos:
         self.n_c = problem.n_c
         self.T = problem.T
         self.T_c = problem.T_c
+        
+        self.tol = tol              # tolerance for upper/lower bounds
     
     
     def constraint(self, optvar):
@@ -57,3 +59,11 @@ class COMIniFiPos:
     def amount(self):
         '''return amount of constraint variables'''
         return 8
+    
+    def constraint_bound_lower(self):
+        '''return lower constraint bound'''
+        return np.ones(self.amount())*(-1)*self.tol
+    
+    def constraint_bound_upper(self):
+        '''return upper constraint bound'''
+        return np.ones(self.amount())*self.tol

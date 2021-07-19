@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 construction of optimization variable w_p:
-    w_p = [w_s_1, ..., w_s_{n_s}]
+    w_p = [w_s^1, ..., w_s^{n_s}]
     w_p^s = [p^s_1, ..., p^s_{n_f}]
     p^s_f = [p^s_f_x, p^s_f_y]
 """
